@@ -1639,21 +1639,58 @@ MakeSIDSTSaw	move.l	(a2)+,d2
 		move.l	psb_SIDSampleNoise(a6),a0	;Making Noise Waveform
 		lea	$4000(a0),a1
 		moveq	#$00,d0
-		move.l	#$91827364,d1
-		move.l	#$55647382,d2
-		move.l	#$46372819,d3
-MakeSIDSNoise	add.l	d2,d1
-		eor.l	d3,d1
-		eor.l	d2,d3
-		rol.l	d1,d2
-		ror.l	d2,d3
-		move.l	d1,d4
-		swap	d4
-		add.w	d4,d1
-		add.b	d1,d0
+		move.l	#$8d921,D1
+MakeSIDSNoise	move.l	d1,d0
+		lsr.l	#$2,d0
+		andi.b	#$1,d0
+		move.l	d1,d2
+		lsr.l	#$3,d2
+		andi.b	#$2,d2
+		or.l	d2,d0
+		move.l	d1,d2
+		lsr.l	#$5,d2
+		andi.b	#$4,d2
+		or.l	d2,d0
+		move.l	d1,d2
+		moveq	#$8,d3
+		lsr.l	d3,d2
+		andi.b	#$8,d2
+		or.l	d2,d0
+		move.l	d1,d2
+		moveq	#$9,d3
+		lsr.l	d3,d2
+		andi.b	#$10,d2
+		or.l	d2,d0
+		move.l	d1,d2
+		moveq	#$b,d3
+		lsr.l	d3,d2
+		andi.b	#$20,d2
+		or.l	d2,d0
+		move.l	d1,d2
+		moveq	#$e,d3
+		lsr.l	d3,d2
+		andi.b	#$40,d2
+		or.l	d2,d0
+		move.l	d1,d2
+		moveq	#$f,d3
+		lsr.l	d3,d2
+		andi.b	#-$80,d2
+		or.l	d2,d0
+		eori.b	#-$80,d0
 		move.b	d0,(a0)+
+		move.l	d1,d0
+		moveq	#$16,d3
+		lsr.l	d3,d0
+		andi.b	#$1,d0
+		move.l	d1,d2
+		moveq	#$11,d3
+		lsr.l	d3,d2
+		andi.b	#$1,d2
+		eor.l	d2,d0
+		add.l	d1,d1
+		or.b	d0,d1
 		cmpa.l	a0,a1
-		bne.s	MakeSIDSNoise
+		bne.w	MakeSIDSNoise
 
 		move.l	psb_SIDSampleTri(a6),a0	;Making TriPul Waveform
 		move.l	psb_SIDSampleTPul(a6),a1
@@ -2328,6 +2365,9 @@ CreateSNoise					;Noise Creation
 		dbf	d3,.2
 		cmpa.l	a3,a4
 		bhi.s	.1
+		move.l	a3,d0
+		sub.l	a4,d0
+		add.w	d0,$32(a0)
 		bra.s	.6
 .3		subq.w	#1,d2
 		beq.s	.7
@@ -2337,6 +2377,9 @@ CreateSNoise					;Noise Creation
 		dbf	d3,.5
 		cmpa.l	a3,a4
 		bhi.s	.4
+		move.l	a3,d0
+		sub.l	a4,d0
+		add.w	d0,$32(a0)
 .6		move.l	a5,d0
 		sub.l	psb_SIDSampleNoise(a6),d0
 		add.w	d0,psb_LastNoise(a6)
