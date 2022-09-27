@@ -25,7 +25,7 @@ PSIDLIB_IDSTRING MACRO
 		ENDM
 
 PSIDLIB_COPYRIGHT MACRO
-		dc.b	"© 1994 by Per Håkan Sundell & Ron Birk",0
+		dc.b	"ï¿½ 1994 by Per Hï¿½kan Sundell & Ron Birk",0
 		ENDM
 
 
@@ -495,6 +495,8 @@ hunkNextInst	equ	$AFFB
 hunkNextInst0	equ	$FFFF
 hunkNextInst1	equ	$FFFE
 hunkNextInst2	equ	$FFFD
+hunkMovepAbs	equ	$AFFA
+hunkMovepInd	equ	$AFF9
 *=======================================================================*
 *	AMIGA CUSTOM AND CIA DEFINITIONS				*
 *=======================================================================*
@@ -640,6 +642,18 @@ NextInstStat2	MACRO
 		dc.w	hunkNextInst,hunkNextInst2
 		dc.l	$FFFFFFFF
 		dc.w	$FFFF
+		ENDM
+
+MovepAbs	MACRO
+		dc.w	hunkMovepAbs
+		dc.l	$FFFFFFFF
+		dc.w	$FFFF
+		ENDM
+
+
+MovepInd	MACRO
+		dc.w	hunkMovepInd
+		dc.l	$FFFFFFFF, $FFFFFFFF
 		ENDM
 
 ; ========================================================================;

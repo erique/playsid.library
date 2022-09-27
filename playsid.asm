@@ -621,7 +621,8 @@ CalcStartAddr
 		tst.w	psb_SongStart(a6)
 		bne.s	.1
 		move.l	psb_SongLocation(a6),a0
-		movep.w	1(a0),d0
+		move.b	1(a0),d0
+		lsl.w	#8,d0
 		move.b	(a0),d0
 		move.w	d0,psb_SongStart(a6)
 		addq.l	#2,a0
@@ -707,19 +708,22 @@ GetIrqAdress
 		move.b	1(a0),d0
 		andi.b	#$02,d0
 		beq.s	.1
-		movep.w	$0315(a0),d0
+		move.b	$0315(a0),d0
+		lsl.w	#8,d0
 		move.b	$0314(a0),d0
 		rts
 .1
 		add.l	#$10000,a0
-		movep.w	$FFFFFFFF(a0),d0
+		move.b	$FFFFFFFF(a0),d0
+		lsl.w	#8,d0
 		move.b	$FFFFFFFE(a0),d0
 		rts
 
 *-----------------------------------------------------------------------*
 GetC64TimerA	move.l	psb_C64Mem(a6),a0
 		add.l	#$0000DC04,a0
-		movep.w	1(a0),d0
+		move.b	1(a0),d0
+		lsl.w	#8,d0
 		move.b	(a0),d0
 		rts
 
@@ -1391,7 +1395,8 @@ Sound		movem.l	d2-d7/a2-a5,-(a7)
 		lea	psb_ChannelEnable(a6),a1
 		tst.w	0(a1)
 		beq.s	.NoChan1
-		movep.w	sid_Voice1FreqHigh(a5),d0
+		move.b	sid_Voice1FreqHigh(a5),d0
+		lsl.w	#8,d0
 		move.b	sid_Voice1FreqLow(a5),d0
 .NoChan1	bsr	CalcFreq
 		move.l	psb_Chan2(a6),a0
@@ -1399,7 +1404,8 @@ Sound		movem.l	d2-d7/a2-a5,-(a7)
 		lea	psb_ChannelEnable(a6),a1
 		tst.w	2(a1)
 		beq.s	.NoChan2
-		movep.w	sid_Voice2FreqHigh(a5),d0
+		move.b	sid_Voice2FreqHigh(a5),d0
+		lsl.w	#8,d0
 		move.b	sid_Voice2FreqLow(a5),d0
 .NoChan2	bsr	CalcFreq
 		move.l	psb_Chan3(a6),a0
@@ -1407,7 +1413,8 @@ Sound		movem.l	d2-d7/a2-a5,-(a7)
 		lea	psb_ChannelEnable(a6),a1
 		tst.w	4(a1)
 		beq.s	.NoChan3
-		movep.w	sid_Voice3FreqHigh(a5),d0
+		move.b	sid_Voice3FreqHigh(a5),d0
+		lsl.w	#8,d0
 		move.b	sid_Voice3FreqLow(a5),d0
 .NoChan3	bsr	CalcFreq
 
@@ -1420,7 +1427,8 @@ Sound		movem.l	d2-d7/a2-a5,-(a7)
 		move.l	psb_Chan1(a6),a0
 		move.l	psb_Chan3(a6),a2
 		move.b	sid_Voice1Control(a5),d0
-		movep.w	sid_Voice1PulseHigh(a5),d1
+		move.b	sid_Voice1PulseHigh(a5),d1
+		lsl.w	#8,d1
 		move.b	sid_Voice1PulseLow(a5),d1
 		move.w	#$0000,d2
 		bsr	CreateSample
@@ -1428,7 +1436,8 @@ Sound		movem.l	d2-d7/a2-a5,-(a7)
 		lea	$800(a3),a1
 		move.l	psb_Chan1(a6),a2
 		move.b	sid_Voice2Control(a5),d0
-		movep.w	sid_Voice2PulseHigh(a5),d1
+		move.b	sid_Voice2PulseHigh(a5),d1
+		lsl.w	#8,d1
 		move.b	sid_Voice2PulseLow(a5),d1
 		move.w	#$0400,d2
 		bsr	CreateSample
@@ -1436,7 +1445,8 @@ Sound		movem.l	d2-d7/a2-a5,-(a7)
 		lea	$1000(a3),a1
 		move.l	psb_Chan2(a6),a2
 		move.b	sid_Voice3Control(a5),d0
-		movep.w	sid_Voice3PulseHigh(a5),d1
+		move.b	sid_Voice3PulseHigh(a5),d1
+		lsl.w	#8,d1
 		move.b	sid_Voice3PulseLow(a5),d1
 		move.w	#$0800,d2
 		bsr	CreateSample
@@ -1940,7 +1950,8 @@ CreateFourGalway
 		move.w	#$0000,AUD3VOL(a4)	;Null Volume
 		clr.b	ext_Counter(a5)
 		moveq	#$00,d0
-		movep.w	ext_AdrHigh(a5),d0
+		move.b	ext_AdrHigh(a5),d0
+		lsl.w	#8,d0
 		move.b	ext_AdrLow(a5),d0
 		tst.w	d0
 		beq	.3
@@ -2010,9 +2021,11 @@ CreateFourHuels
 		st.b	ch4_Active(a1)		;Four Active
 		move.b	ext_Control(a5),d4
 		clr.b	ext_Control(a5)
-		movep.w	ext_AdrHigh(a5),d0		;Sample Start
+		move.b	ext_AdrHigh(a5),d0		;Sample Start
+		lsl.w	#8,d0
 		move.b	ext_AdrLow(a5),d0
-		movep.w	ext_EndAdrHigh(a5),d1		;Sample End
+		move.b	ext_EndAdrHigh(a5),d1		;Sample End
+		lsl.w	#8,d1
 		move.b	ext_EndAdrLow(a5),d1
 		cmp.w	d0,d1
 		bls	.5
@@ -2025,9 +2038,11 @@ CreateFourHuels
 		move.l	d1,d6
 		moveq	#$00,d2
 		moveq	#$00,d3
-		movep.w	ext_RepAdrHigh(a5),d2
+		move.b	ext_RepAdrHigh(a5),d2
+		lsl.w	#8,d2
 		move.b	ext_RepAdrLow(a5),d2
-		movep.w	ext_AdrHigh(a5),d3
+		move.b	ext_AdrHigh(a5),d3
+		lsl.w	#8,d3
 		move.b	ext_AdrLow(a5),d3
 		tst.w	d3
 		beq.s	.1b
@@ -2044,7 +2059,8 @@ CreateFourHuels
 		sub.w	d2,d6
 .1b		move.l	d5,ch4_SamRepAdr(a1)
 		move.w	d6,ch4_SamRepLen(a1)
-		movep.w	ext_PeriodHigh(a5),d2		;Period
+		move.b	ext_PeriodHigh(a5),d2		;Period
+		lsl.w	#8,d2
 		move.b	ext_PeriodLow(a5),d2
 		mulu	psb_ConvFourConst(a6),d2
 		divu	#8192,d2
@@ -3102,6 +3118,10 @@ Make6502Emulator
 	beq.s	.M6
 	cmp.w	#hunkNextInst,d7
 	beq.s	.M7
+	cmp.w	#$aff9,d7
+	beq.w	.AFF9
+	cmp.w	#$affa,d7
+	beq.w	.AFFA
 	bsr	.Write
 	bra.s	.M1
 .M3
@@ -3131,7 +3151,7 @@ Make6502Emulator
 	move.l	a0,a6
 	move.l	a0,a5
 	st	d5
-	bra.s	.M1
+	bra.w	.M1
 .M7
 	move.w	(a4)+,d7
 	subq.w	#2,d4
@@ -3221,6 +3241,34 @@ Make6502Emulator
 	move.w	d7,0(a6,a2.l)
 	move.w	d7,(a6)+
 	rts
+
+.AFF9	; indirect
+	subq.w	#8,d4
+	addq.l	#8,a4
+	move.w	20(a3),d7
+	bsr.w	.Write
+	move.w	22(a3),d7
+	bsr.w	.Write
+	move.w	24(a3),d7
+	bsr.w	.Write
+	move.w	26(a3),d7
+	bsr.w	.Write
+	move.w	28(a3),d7
+	bsr.w	.Write
+	bra.w	.M1
+.AFFA	; absolute
+	subq.w	#6,d4
+	addq.l	#6,a4
+	move.w	30(a3),d7
+	bsr.w	.Write
+	move.w	32(a3),d7
+	bsr.w	.Write
+	move.w	34(a3),d7
+	bsr.w	.Write
+	move.w	36(a3),d7
+	bsr.w	.Write
+	bra.w	.M1
+
 .Irq	rts
 	nop
 	move.w	d0,d3
@@ -3236,6 +3284,12 @@ Make6502Emulator
 	move.b	(a6)+,$0000(a4)
 	jmp	$007E(a4)
 	nop
+	lea	0(a0,d6.l),a2
+	movep.w	1(a2),d7
+	move.b	(a2),d7
+	movep.w	1(a6),d7
+	move.b	(a6),d7
+	addq.l	#2,a6
 .Next68020
 	move.b	(a6)+,-(a7)
 	move.w	(a7)+,d7
@@ -3245,6 +3299,13 @@ Make6502Emulator
 	move.w	(a7)+,d7
 	clr.b	d7
 	jmp	$7E(a4,d7.w)
+	move.b	1(a0,d6.l),d7
+	lsl.w	#$8,d7
+	move.b	0(a0,d6.l),d7
+	move.b	(a6)+,d7
+	ror.w	#$8,d7
+	move.b	(a6)+,d7
+	ror.w	#$8,d7
 
 *-----------------------------------------------------------------------*
 MakeMMUTable
@@ -4729,9 +4790,7 @@ I00					;BRK
 I01					;ORA - (Indirect,X)
 	move.b	(a6)+,d6
 	add.b	d1,d6			;X
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	or.b	0(a0,d7.l),d0
 	NextInstStat			;N & Z
 
@@ -4741,9 +4800,7 @@ I02					;???
 I03					;+ ASL,ORA - (Ind,X)
 	move.b	(a6)+,d6
 	add.b	d1,d6
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	add.b	d6,d6
@@ -4828,16 +4885,12 @@ I0C					;+ NOP - Absolute
 	NextInstStat2
 
 I0D					;ORA - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	or.b	0(a0,d7.l),d0
 	NextInstStat			;N & Z
 
 I0E					;ASL - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	add.b	d6,d6
@@ -4847,9 +4900,7 @@ I0E					;ASL - Absolute
 	NextInst
 
 I0F					;+ ASL,ORA - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	add.b	d6,d6
@@ -4879,9 +4930,7 @@ I10b
 
 I11					;ORA - (Indirect),y
 	move.b	(a6)+,d6
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	add.w	d2,d7			;Y
 	or.b	0(a0,d7.l),d0
 	NextInstStat
@@ -4891,9 +4940,7 @@ I12					;???
 
 I13					;+ ASL,ORA - (Indirect),Y
 	move.b	(a6)+,d6
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	add.w	d2,d7			;Y
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
@@ -4940,10 +4987,8 @@ I18					;CLC
 	NextInstStat2
 
 I19					;ORA - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	or.b	0(a0,d7.l),d0
 	NextInstStat
 
@@ -4951,10 +4996,8 @@ I1A					;+ NOP
 	NextInstStat2
 
 I1B					;+ ASL,ORA - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	add.b	d6,d6
@@ -4968,18 +5011,14 @@ I1C					;+ NOP - Absolute
 	NextInstStat2
 
 I1D					;ORA - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	or.b	0(a0,d7.l),d0
 	NextInstStat
 	
 I1E					;ASL - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	add.b	d6,d6
@@ -4989,10 +5028,8 @@ I1E					;ASL - Absolute,X
 	NextInst
 
 I1F					;+ ASL,ORA - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	add.b	d6,d6
@@ -5002,7 +5039,8 @@ I1F					;+ ASL,ORA - Absolute,X
 	NextInstStat
 
 I20					;JSR
-	movep.w	1(a6),d7
+	move.b	1(a6),-(sp)
+	move.w	(sp)+,d7
 	move.b	(a6)+,d7
 	move.l	a6,a2
 	sub.l	a0,a2
@@ -5016,9 +5054,7 @@ I20					;JSR
 I21					;AND - (Indirect,X)
 	move.b	(a6)+,d6
 	add.b	d1,d6			;X
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	and.b	0(a0,d7.l),d0
 	NextInstStat
 
@@ -5028,9 +5064,7 @@ I22					;???
 I23					;+ ROL,AND - (Ind,X)
 	move.b	(a6)+,d6
 	add.b	d1,d6			;X
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	neg.b	d4			;C
@@ -5116,9 +5150,7 @@ I2B					;+ AND,ROL - Immediate
 	NextInst
 
 I2C					;BIT - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	move.b	0(a0,d7.l),d6
 I2Cc
 	move.b	d6,d7
@@ -5132,16 +5164,12 @@ I2Cc
 	NextInst
 
 I2D					;AND - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	and.b	0(a0,d7.l),d0
 	NextInstStat
 
 I2E					;ROL - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	neg.b	d4			;C
@@ -5152,9 +5180,7 @@ I2E					;ROL - Absolute
 	NextInst
 
 I2F					;+ ROL,AND - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	neg.b	d4			;C
@@ -5186,9 +5212,7 @@ I30c
 
 I31					;AND - (Indirect),y
 	move.b	(a6)+,d6
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	add.w	d2,d7			;Y
 	and.b	0(a0,d7.l),d0
 	NextInstStat
@@ -5198,9 +5222,7 @@ I32					;???
 
 I33					;+ ROL,AND - (Ind),Y
 	move.b	(a6)+,d6
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	add.w	d2,d7			;Y
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
@@ -5250,10 +5272,8 @@ I38					;SEC
 	NextInstStat2
 
 I39					;AND - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	and.b	0(a0,d7.l),d0
 	NextInstStat
 
@@ -5261,10 +5281,8 @@ I3A					;+ NOP
 	NextInstStat2
 
 I3B					;+ ROL,AND - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	neg.b	d4			;C
@@ -5279,18 +5297,14 @@ I3C					;+ NOP - Absolute
 	NextInstStat2
 
 I3D					;AND - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	and.b	0(a0,d7.l),d0
 	NextInstStat
 
 I3E					;ROL - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	neg.b	d4			;C
@@ -5301,10 +5315,8 @@ I3E					;ROL - Absolute,X
 	NextInst
 
 I3F					;+ ROL,AND - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	neg.b	d4			;C
@@ -5320,9 +5332,7 @@ I40					;RTI
 I41					;EOR - (Indirect,X)
 	move.b	(a6)+,d6
 	add.b	d1,d6			;X
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	move.b	0(a0,d7.l),d7
 	eor.b	d7,d0
 	NextInstStat
@@ -5333,9 +5343,7 @@ I42					;???
 I43					;+ LSR,EOR - (Ind,X)
 	move.b	(a6)+,d6
 	add.b	d1,d6			;X
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	lsr.b	#1,d6
@@ -5395,23 +5403,20 @@ I4B					;+ AND,LSR - Immediate
 	NextInstStat
 
 I4C					;JMP - Absolute
-	movep.w	1(a6),d7
+	move.b	1(a6),-(sp)
+	move.w	(sp)+,d7
 	move.b	(a6),d7
 	lea	0(a0,d7.l),a6
 	NextInstStat2
 
 I4D					;EOR - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	move.b	0(a0,d7.l),d7
 	eor.b	d7,d0
 	NextInstStat
 
 I4E					;LSR - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	lsr.b	#1,d6
@@ -5421,9 +5426,7 @@ I4E					;LSR - Absolute
 	NextInst
 
 I4F					;+ LSR,EOR - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	lsr.b	#1,d6
@@ -5443,9 +5446,7 @@ I50a
 
 I51					;EOR - (Indirect),Y
 	move.b	(a6)+,d6
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	add.w	d2,d7			;Y
 	move.b	0(a0,d7.l),d7
 	eor.b	d7,d0
@@ -5456,9 +5457,7 @@ I52					;???
 
 I53					;+ LSR,EOR - (Ind),Y
 	move.b	(a6)+,d6
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	add.w	d2,d7			;Y
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
@@ -5506,10 +5505,8 @@ I58					;CLI
 	NextInstStat2
 
 I59					;EOR - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	move.b	0(a0,d7.l),d7
 	eor.b	d7,d0
 	NextInstStat
@@ -5518,10 +5515,8 @@ I5A					;+ NOP
 	NextInstStat2
 
 I5B					;+ LSR,EOR - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	lsr.b	#1,d6
@@ -5535,19 +5530,15 @@ I5C					;+ NOP - Absolute
 	NextInstStat2
 
 I5D					;EOR - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	move.b	0(a0,d7.l),d7
 	eor.b	d7,d0
 	NextInstStat
 
 I5E					;LSR - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	lsr.b	#1,d6
@@ -5557,10 +5548,8 @@ I5E					;LSR - Absolute,X
 	NextInst
 
 I5F					;+ LSR,EOR - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	lsr.b	#1,d6
@@ -5572,7 +5561,8 @@ I5F					;+ LSR,EOR - Absolute,X
 I60					;RTS
 	cmp.l	a1,a5
 	bls.s	I60a
-	movep.w	1(a1),d7
+	move.b	1(a1),-(sp)
+	move.w	(sp)+,d7
 	move.b	(a1)+,d7
 	addq.l	#1,a1
 	lea	1(a0,d7.l),a6
@@ -5582,9 +5572,7 @@ I60a	rts
 I61					;ADC - (Indirect,X)
 	move.b	(a6)+,d6
 	add.b	d1,d6			;X
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	move.b	0(a0,d7.l),d6
 	neg.b	d4			;C
 	DecimalMode1
@@ -5598,9 +5586,7 @@ I62					;???
 I63					;+ ROR,ADC - (Ind,X)
 	move.b	(a6)+,d6
 	add.b	d1,d6			;X
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	neg.b	d4			;C
@@ -5673,18 +5659,18 @@ I6B					;+ AND,ROR - Immediate
 	NextInstStat
 
 I6C					;JMP - Indirect
-	movep.w	1(a6),d7
+	move.b	1(a6),-(sp)
+	move.w	(sp)+,d7
 	move.b	(a6),d7
 	lea	0(a0,d7.l),a6
-	movep.w	1(a6),d7
+	move.b	1(a6),-(sp)
+	move.w	(sp)+,d7
 	move.b	(a6),d7
 	lea	0(a0,d7.l),a6
 	NextInstStat2
 
 I6D					;ADC - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	move.b	0(a0,d7.l),d6
 	neg.b	d4			;C
 	DecimalMode1
@@ -5693,9 +5679,7 @@ I6D					;ADC - Absolute
 	NextInstStat
 
 I6E					;ROR - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	neg.b	d4			;C
@@ -5706,9 +5690,7 @@ I6E					;ROR - Absolute
 	NextInst
 
 I6F					;+ ROR,ADC - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	neg.b	d4			;C
@@ -5730,9 +5712,7 @@ I70a
 
 I71					;ADC - (Indirect),Y
 	move.b	(a6)+,d6
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	add.w	d2,d7			;Y
 	move.b	0(a0,d7.l),d6
 	neg.b	d4			;C
@@ -5746,9 +5726,7 @@ I72					;???
 
 I73					;+ ROR,ADC - (Ind),Y
 	move.b	(a6)+,d6
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	add.w	d2,d7			;Y
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
@@ -5804,10 +5782,8 @@ I78					;SEI
 	NextInstStat2
 
 I79					;ADC - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	move.b	0(a0,d7.l),d6
 	neg.b	d4			;C
 	DecimalMode1
@@ -5819,10 +5795,8 @@ I7A					;+ NOP
 	NextInstStat2
 
 I7B					;+ ROR,ADC - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	neg.b	d4			;C
@@ -5838,10 +5812,8 @@ I7C					;???
 	NextInstStat2
 
 I7D					;ADC - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	move.b	0(a0,d7.l),d6
 	neg.b	d4			;C
 	DecimalMode1
@@ -5850,10 +5822,8 @@ I7D					;ADC - Absolute,X
 	NextInstStat
 
 I7E					;ROR - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	neg.b	d4			;C
@@ -5864,10 +5834,8 @@ I7E					;ROR - Absolute,X
 	NextInst
 
 I7F					;+ ROR,ADC - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	neg.b	d4			;C
@@ -5885,9 +5853,7 @@ I80					;+ NOP - Zero Page
 I81					;STA - (Indirect,X)
 	move.b	(a6)+,d6
 	add.b	d1,d6			;X
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	MMU2	I81b
 	move.b	d0,0(a0,d7.l)
 	NextInstStat2
@@ -5906,9 +5872,7 @@ I83					;+ CLRX - (Ind,X)
 	move.b	(a6)+,d6
 	tst.b	d1			;X
 	bne.s	I83a
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	MMU2	I83b
 	clr.b	0(a0,d7.l)
 I83a
@@ -5962,9 +5926,7 @@ I8B					;+ MXA - Immediate
 	NextInstStat2
 
 I8C					;STY - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	MMU2	I8Cb
 	move.b	d2,0(a0,d7.l)
 	NextInstStat2
@@ -5976,9 +5938,7 @@ I8Cb
 	_OUTPUT2
 
 I8D					;STA - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	MMU2	I8Db
 	move.b	d0,0(a0,d7.l)
 	NextInstStat2
@@ -5990,9 +5950,7 @@ I8Db
 	_OUTPUT2
 
 I8E					;STX - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	MMU2	I8Eb
 	move.b	d1,0(a0,d7.l)
 	NextInstStat2
@@ -6004,9 +5962,7 @@ I8Eb
 	_OUTPUT2
 
 I8F					;+ STAX - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	MMU2	I8Fb
 	move.b	d0,d6
 	and.b	d1,d6
@@ -6031,9 +5987,7 @@ I90a
 
 I91					;STA - (Indirect),Y
 	move.b	(a6)+,d6
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	add.w	d2,d7			;Y
 	MMU2	I91b
 	move.b	d0,0(a0,d7.l)
@@ -6050,9 +6004,7 @@ I92					;???
 
 I93					;+ STAX21 - (Ind),Y
 	move.b	(a6)+,d6
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	add.w	d2,d7			;Y
 	MMU2	I93b
 	moveq	#$21,d6
@@ -6100,10 +6052,8 @@ I98					;TYA
 	NextInstStat
 
 I99					;STA - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	MMU2	I99b
 	move.b	d0,0(a0,d7.l)
 	NextInstStat2
@@ -6121,10 +6071,8 @@ I9A					;TXS
 	NextInstStat2
 
 I9B					;+ STAX21SP - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	MMU2	I9Bb
 	lea	0(a0,d7.l),a2
 	move.w	#$0100,d7
@@ -6148,10 +6096,8 @@ I9Bb
 	_OUTPUT2
 
 I9C					;+ STAY21 - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	MMU2	I9Cb
 	moveq	#$21,d6
 	and.b	d0,d6
@@ -6168,10 +6114,8 @@ I9Cb
 	_OUTPUT2
 
 I9D					;STA - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	MMU2	I9Db
 	move.b	d0,0(a0,d7.l)
 	NextInstStat2
@@ -6183,10 +6127,8 @@ I9Db
 	_OUTPUT2
 
 I9E					;+ STAX21 - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	MMU2	I9Eb
 	moveq	#$21,d6
 	and.b	d0,d6
@@ -6204,10 +6146,8 @@ I9Eb
 	NextInstStat2
 
 I9F					;+ STAX21 - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	MMU2	I9Fb
 	moveq	#$21,d6
 	and.b	d0,d6
@@ -6231,9 +6171,7 @@ IA0					;LDY - Immediate
 IA1					;LDA - (Indirect,X)
 	move.b	(a6)+,d6
 	add.b	d1,d6			;X
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	move.b	0(a0,d7.l),d0
 	NextInstStat
 
@@ -6245,9 +6183,7 @@ IA2					;LDX - Immediate
 IA3					;+ LDAX - (Ind,X)
 	move.b	(a6)+,d6
 	add.b	d1,d6			;X
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	move.b	0(a0,d7.l),d0
 	move.b	d0,d1
 	NextInstStat
@@ -6293,32 +6229,24 @@ IAB					;+ LDAX - Immediate
 	NextInstStat
 
 IAC					;LDY - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	move.b	0(a0,d7.l),d2
 	move.w	d2,d3			;N & Z
 	NextInst
 
 IAD					;LDA - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	move.b	0(a0,d7.l),d0
 	NextInstStat
 
 IAE					;LDX - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	move.b	0(a0,d7.l),d1
 	move.w	d1,d3			;N & Z
 	NextInst
 
 IAF					;+ LDAX - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	move.b	0(a0,d7.l),d0
 	move.b	d0,d1
 	NextInstStat
@@ -6334,9 +6262,7 @@ IB0a
 
 IB1					;LDA - (Indirect),Y
 	move.b	(a6)+,d6
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	add.w	d2,d7			;Y
 	move.b	0(a0,d7.l),d0
 	NextInstStat
@@ -6346,9 +6272,7 @@ IB2					;???
 
 IB3					;+ LDAX - (Ind),Y
 	move.b	(a6)+,d6
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	add.w	d2,d7			;Y
 	move.b	0(a0,d7.l),d0
 	move.b	d0,d1
@@ -6386,10 +6310,8 @@ IB8					;CLV
 	NextInstStat2
 
 IB9					;LDA - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	move.b	0(a0,d7.l),d0
 	NextInstStat
 
@@ -6402,10 +6324,8 @@ IBA					;TSX
 	NextInst
 
 IBB					;+ SPMAXSP - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	move.b	0(a0,d7.l),d6
 	move.w	a1,d7
 	sub.w	a0,d7
@@ -6419,36 +6339,28 @@ IBB					;+ SPMAXSP - Absolute,Y
 	NextInstStat
 
 IBC					;LDY - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	move.b	0(a0,d7.l),d2
 	move.w	d2,d3			;N & Z
 	NextInst
 
 IBD					;LDA - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	move.b	0(a0,d7.l),d0
 	NextInstStat
 
 IBE					;LDX - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	move.b	0(a0,d7.l),d1
 	move.w	d1,d3			;N & Z
 	NextInst
 
 IBF					;+ LDAX - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	move.b	0(a0,d7.l),d0
 	move.b	d0,d1
 	NextInstStat
@@ -6462,9 +6374,7 @@ IC0					;CPY - Immediate
 IC1					;CMP - (Indirect,X)
 	move.b	(a6)+,d6
 	add.b	d1,d6			;X
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	move.w	d0,d3			;N & Z
 	sub.b	0(a0,d7.l),d3
 	scc	d4			;C
@@ -6477,9 +6387,7 @@ IC2					;+ NOP - Zero Page
 IC3					;+ DEC,CMP - (Ind,X)
 	move.b	(a6)+,d6
 	add.b	d1,d6			;X
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	subq.b	#1,d6
@@ -6546,27 +6454,21 @@ ICB					;+ AXM - Immediate
 	NextInst
 
 ICC					;CPY - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	move.w	d2,d3			;N & Z
 	sub.b	0(a0,d7.l),d3
 	scc	d4			;C
 	NextInst
 
 ICD					;CMP - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	move.w	d0,d3			;N & Z
 	sub.b	0(a0,d7.l),d3
 	scc	d4			;C
 	NextInst
 
 ICE					;DEC - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	subq.b	#1,d6
@@ -6575,9 +6477,7 @@ ICE					;DEC - Absolute
 	NextInst
 
 ICF					;+ DEC,CMP - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	subq.b	#1,d6
@@ -6606,9 +6506,7 @@ ID0b
 
 ID1					;CMP - (Indirect),Y
 	move.b	(a6)+,d6
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	add.w	d2,d7			;Y
 	move.w	d0,d3
 	sub.b	0(a0,d7.l),d3		;N & Z
@@ -6620,9 +6518,7 @@ ID2					;???
 
 ID3					;+ DEC,CMP - (Ind),Y
 	move.b	(a6)+,d6
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	add.w	d2,d7			;Y
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
@@ -6680,10 +6576,8 @@ ID8a
 	NextInstStat2
 
 ID9					;CMP - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	move.w	d0,d3
 	sub.b	0(a0,d7.l),d3		;N & Z
 	scc	d4			;C
@@ -6693,10 +6587,8 @@ IDA					;+ NOP
 	NextInstStat2
 
 IDB					;+ DEC,CMP - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	subq.b	#1,d6
@@ -6711,20 +6603,16 @@ IDC					;+ NOP - Absolute
 	NextInstStat2
 
 IDD					;CMP - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	move.w	d0,d3
 	sub.b	0(a0,d7.l),d3		;N & Z
 	scc	d4			;C
 	NextInst
 
 IDE					;DEC - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	subq.b	#1,d6
@@ -6733,10 +6621,8 @@ IDE					;DEC - Absolute,X
 	NextInst
 
 IDF					;+ DEC,CMP - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	subq.b	#1,d6
@@ -6755,9 +6641,7 @@ IE0					;CPX - Immediate
 IE1					;SBC - (Indirect,X)
 	move.b	(a6)+,d6
 	add.b	d1,d6			;X
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	move.b	0(a0,d7.l),d6
 	not.b	d4
 	neg.b	d4			;C
@@ -6773,9 +6657,7 @@ IE2					;+ NOP - Zero Page
 IE3					;+ INC,SBC - (Ind,X)
 	move.b	(a6)+,d6
 	add.b	d1,d6			;X
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
 	addq.b	#1,d6
@@ -6853,18 +6735,14 @@ IEB					;+ SBC - Immediate
 	NextInstStat
 
 IEC					;CPX - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	move.w	d1,d3
 	sub.b	0(a0,d7.l),d3		;N & Z
 	scc	d4			;C
 	NextInst
 
 IED					;SBC - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	move.b	0(a0,d7.l),d6
 	not.b	d4
 	neg.b	d4			;C
@@ -6874,9 +6752,7 @@ IED					;SBC - Absolute
 	NextInstStat
 
 IEE					;INC - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	MMU2	IEEb
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
@@ -6891,9 +6767,7 @@ IEEb
 	_OUTPUT
 
 IEF					;+ INC,SBC - Absolute
-	movep.w	1(a6),d7
-	move.b	(a6),d7
-	addq.l	#2,a6
+	MovepAbs
 	MMU2	IEFb
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
@@ -6935,9 +6809,7 @@ IF0b
 
 IF1					;SBC - (Indirect),Y
 	move.b	(a6)+,d6
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	add.w	d2,d7			;Y
 	move.b	0(a0,d7.l),d6
 	not.b	d4
@@ -6952,9 +6824,7 @@ IF2					;???
 
 IF3					;+ INC,SBC - (Ind),Y
 	move.b	(a6)+,d6
-	lea	0(a0,d6.l),a2
-	movep.w	1(a2),d7
-	move.b	(a2),d7
+	MovepInd
 	add.w	d2,d7			;Y
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
@@ -7019,10 +6889,8 @@ IF8a
 	NextInstStat2
 
 IF9					;SBC - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	move.b	0(a0,d7.l),d6
 	not.b	d4
 	neg.b	d4			;C
@@ -7035,10 +6903,8 @@ IFA					;+ NOP
 	NextInstStat2
 
 IFB					;+ INC,SBC - Absolute,Y
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d2,d7			;Y
-	addq.l	#2,a6
 	MMU2	IFBb
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
@@ -7066,10 +6932,8 @@ IFC					;+ NOP - Absolute
 	NextInstStat2
 
 IFD					;SBC - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	move.b	0(a0,d7.l),d6
 	not.b	d4
 	neg.b	d4			;C
@@ -7079,10 +6943,8 @@ IFD					;SBC - Absolute,X
 	NextInstStat
 
 IFE					;INC - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7
-	addq.l	#2,a6
 	MMU2	IFEb
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
@@ -7097,10 +6959,8 @@ IFEb
 	_OUTPUT
 
 IFF					;+ INC,SBC - Absolute,X
-	movep.w	1(a6),d7
-	move.b	(a6),d7
+	MovepAbs
 	add.w	d1,d7			;X
-	addq.l	#2,a6
 	MMU2	IFFb
 	lea	0(a0,d7.l),a2
 	move.b	(a2),d6
