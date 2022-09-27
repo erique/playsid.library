@@ -14,18 +14,18 @@ PLAYSID_LIBDEFS_I SET  1
 ;************************************************************************
 
 PSIDLIB_VERSION		equ	1
-PSIDLIB_REVISION	equ	1
+PSIDLIB_REVISION	equ	2
 
 PSIDLIB_NAME	MACRO
 		dc.b	"playsid.library",0
 		ENDM
 
 PSIDLIB_IDSTRING MACRO
-		dc.b	"playsid.library 1.1 (19.06.94)",13,10,0
+		dc.b	"playsid.library 1.2 (30.03.96)",13,10,0
 		ENDM
 
 PSIDLIB_COPYRIGHT MACRO
-		dc.b	"ï¿½ 1994 by Per Hï¿½kan Sundell & Ron Birk",0
+		dc.b	"© 1996 by Per Håkan Sundell & Ron Birk",0
 		ENDM
 
 
