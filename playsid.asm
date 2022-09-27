@@ -2,15 +2,15 @@
 *=======================================================================*
 *									*
 * 	C64 MUSIC EMULATOR FOR AMIGA					*
-*	(C) 1990-1994 HÅKAN SUNDELL & RON BIRK				*
+*	(C) 1990-1994 HÃ…KAN SUNDELL & RON BIRK				*
 *									*
 *=======================================================================*
 
 *=======================================================================*
 *	INCLUDES							*
 *=======================================================================*
-
-		include	exec/exec_lib.i
+	NOLIST
+		include	lvo/exec_lib.i
 		include	exec/execbase.i
 		include	exec/initializers.i
 		include	exec/memory.i
@@ -18,14 +18,14 @@
 		include	exec/resident.i
 		include intuition/intuition.i
 		include	resources/cia.i
-		include	resources/cia_lib.i
+		include	lvo/cia_lib.i
 		include	hardware/custom.i
 		include	hardware/cia.i
 		include	hardware/dmabits.i
 		include	hardware/intbits.i
 
 		include	playsid_libdefs.i
-
+	LIST
 *=======================================================================*
 *	EXTERNAL REFERENCES						*
 *=======================================================================*
@@ -4430,6 +4430,8 @@ SelectNewVolume
 
 EndOfLibrary
 
+@FreeEmulAudio	jmp	@FreeEmulAudio_impl.l
+@AllocEmulAudio	jmp	@AllocEmulAudio_impl.l
 
 *=======================================================================*
 *                                                                       *
@@ -7150,3 +7152,4 @@ _CiabBase	ds.l	1
 _PlaySidBase	ds.l	1
 
 *-----------------------------------------------------------------------*
+		include	external.asm

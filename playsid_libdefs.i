@@ -25,9 +25,25 @@ PSIDLIB_IDSTRING MACRO
 		ENDM
 
 PSIDLIB_COPYRIGHT MACRO
-		dc.b	"© 1994 by Per Håkan Sundell & Ron Birk",0
+		dc.b	"ï¿½ 1994 by Per Hï¿½kan Sundell & Ron Birk",0
 		ENDM
 
+
+; ========================================================================;
+
+CALLEXEC	MACRO
+		move.l	$4.w,a6
+		CALLLIB	_LVO\1
+		ENDM
+
+CALLCIAB	MACRO	
+		move.l	_CiabBase,a6
+		CALLLIB	_LVO\1
+		ENDM
+
+_custom	= $dff000
+_ciaa	= $bfe001
+_ciab	= $bfd000
 
 ; ========================================================================;
 ; === Memory Allocation ==================================================;
