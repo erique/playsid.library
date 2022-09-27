@@ -25,7 +25,7 @@ PSIDLIB_IDSTRING MACRO
 		ENDM
 
 PSIDLIB_COPYRIGHT MACRO
-		dc.b	"ï¿½ 1994 by Per Hï¿½kan Sundell & Ron Birk",0
+		dc.b	"© 1994 by Per Håkan Sundell & Ron Birk",0
 		ENDM
 
 
@@ -589,14 +589,14 @@ CheckDecMode	MACRO
 		move.l	#$00010000,a2
 		add.l	a2,a4
 		add.l	a2,a5
-		or.w	#$8000,d4
+		ori.w	#$8000,d4
 		jmp	.2(pc,a2.l)
 .1		tst.w	d4
 		bpl.s	.2
 		move.l	#$FFFF0000,a2
 		add.l	a2,a4
 		add.l	a2,a5
-		and.w	#$7fff,d4
+		andi.w	#$7fff,d4
 		jmp	.2(pc,a2.l)
 .2
 		ENDM

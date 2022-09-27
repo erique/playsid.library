@@ -641,7 +641,7 @@ CalcInitAddr
 *-----------------------------------------------------------------------*
 FixSIDSong	
 		move.w	psb_SongFlags(a6),d0		; If SID file, copy player
-		and.w	#SIDF_SIDSONG,d0
+		andi.w	#SIDF_SIDSONG,d0
 		beq.s	.2
 		lea	SidPlayer+2,a0
 		move.l	psb_C64Mem(a6),a1
@@ -705,7 +705,7 @@ InitC64Memory
 GetIrqAdress
 		move.l	psb_C64Mem(a6),a0
 		move.b	1(a0),d0
-		and.b	#$02,d0
+		andi.b	#$02,d0
 		beq.s	.1
 		movep.w	$0315(a0),d0
 		move.b	$0314(a0),d0
@@ -1241,10 +1241,10 @@ RewindRegs	movem.l	d2-d5/a2-a4,-(a7)
 		sub.w	d2,d0
 .6		cmp.w	#BLOCKS_SET,d0
 		bls	.8
-		sub.w	#BLOCKS_SET,d0
+		subi.w	#BLOCKS_SET,d0
 		move.l	srl_Preceed(a0),a0
 		bra	.6
-.7		sub.w	#rrl_SIZEOF,d1
+.7		subi.w	#rrl_SIZEOF,d1
 .8		tst.w	d0
 		beq	.9
 		subq.w	#1,d0
@@ -1311,7 +1311,7 @@ PlaybackRegs	movem.l	d2-d5/a2-a4,-(a7)
 		lea	psp_D400_Offset(a4),a0
 		lea	srp_D400_Offset(a3),a1
 		move.w	0(a0,d5.l),d0
-		add.w	#rd_SIZEOF,d0
+		addi.w	#rd_SIZEOF,d0
 		move.w	d0,0(a0,d5.l)
 		cmp.w	0(a1,d5.l),d0
 		bne	.4
@@ -1336,10 +1336,10 @@ PlaybackRegs	movem.l	d2-d5/a2-a4,-(a7)
 		sub.w	d2,d0
 .5		cmp.w	#BLOCKS_SET,d0
 		bls	.7
-		sub.w	#BLOCKS_SET,d0
+		subi.w	#BLOCKS_SET,d0
 		move.l	srl_Preceed(a0),a0
 		bra	.5
-.6		sub.w	#rrl_SIZEOF,d1
+.6		subi.w	#rrl_SIZEOF,d1
 .7		tst.w	d0
 		beq	.8
 		subq.w	#1,d0
@@ -1472,7 +1472,7 @@ Sound		movem.l	d2-d7/a2-a5,-(a7)
 		swap	d1
 		add.w	d1,a1
 		move.b	(a1),d0
-		add.b	#$80,d0
+		addi.b	#$80,d0
 		move.b	d0,sid_Osc3Random(a5)
 		move.l	psb_Enve3(a6),a0
 		move.w	env_CurrentAddr(a0),d0
@@ -1656,9 +1656,9 @@ MakeSIDSTPul	move.b	(a0)+,d1
 		bhi.s	.1
 		moveq	#$00,d1
 		bra.s	.2
-.1		sub.b	#$78,d1
+.1		subi.b	#$78,d1
 		move.b	0(a2,d1.w),d1
-.2		eor.b	#$80,d1
+.2		eori.b	#$80,d1
 		move.b	d1,(a1)+
 		dbf	d0,MakeSIDSTPul
 
@@ -1669,10 +1669,10 @@ MakeSIDSFour	moveq	#$3f,d1
 		moveq	#$00,d2
 .1		move.b	0(a1,d2.w),(a0)+
 		add.w	d0,d2
-		and.w	#$000f,d2
+		andi.w	#$000f,d2
 		dbf	d1,.1
 		addq.w	#$01,d0
-		and.w	#$000f,d0
+		andi.w	#$000f,d0
 		bne.s	MakeSIDSFour
 
 		move.l	psb_SIDSampleFConv(a6),a0
@@ -1693,7 +1693,7 @@ MakeSIDSFConv
 		moveq	#$00,d0				;Sum Low+High
 .4		move.b	d0,d1
 		move.b	d0,d2
-		and.b	#$0f,d1
+		andi.b	#$0f,d1
 		lsr.b	#4,d2
 		add.b	d2,d1
 		move.b	d1,(a0)+
@@ -1743,7 +1743,7 @@ StartSBreak
 		bsr	StartSUpdaReg
 		move.b	#CAI_START,ch_AudIRQType(a0)	;Start New wave IRQ
 		bsr	SetChanProg
-		or.w	#INTF_SETCLR,d2
+		ori.w	#INTF_SETCLR,d2
 		move.w	d2,INTENA(a4)
 		rts
 
@@ -1751,7 +1751,7 @@ StartSInit
 		bsr	StartSUpdaReg
 		move.b	#CAI_START,ch_AudIRQType(a0)	;Start New wave IRQ
 		bsr	SetChanProg
-		or.w	#INTF_SETCLR,d2
+		ori.w	#INTF_SETCLR,d2
 		move.w	d2,INTREQ(a4)
 		move.w	d2,INTENA(a4)
 		rts
@@ -1790,7 +1790,7 @@ StartSWait
 		move.w	#INTF_SETCLR+INTF_INTEN,INTENA(a4)
 		and.w	d2,d4
 		bne	StartSBreak
-		or.w	#INTF_SETCLR,d2
+		ori.w	#INTF_SETCLR,d2
 		move.w	d2,INTENA(a4)
 		rts
 
@@ -1831,7 +1831,7 @@ StartSSync
 		move.l	ch_SyncLenOld(a0),ch_SamIndStop(a0)
 		move.b	#CAI_SYNC,ch_AudIRQType(a0)		;Sync IRQ
 		bsr	SetChanProg
-		or.w	#INTF_SETCLR,d2
+		ori.w	#INTF_SETCLR,d2
 		move.w	d2,INTENA(a4)
 		rts
 
@@ -1864,7 +1864,7 @@ StartSRing
 		move.l	ch_SyncLenOld(a0),ch_SamIndStop(a0)
 		move.b	#CAI_RING,ch_AudIRQType(a0)		;Ring IRQ
 		bsr	SetChanProg
-		or.w	#INTF_SETCLR,d2
+		ori.w	#INTF_SETCLR,d2
 		move.w	d2,INTENA(a4)
 		rts
 
@@ -1898,7 +1898,7 @@ StartSRSync
 		move.l	ch_SyncLenOld(a0),ch_SamIndStop(a0)
 		move.b	#CAI_RINGSYNC,ch_AudIRQType(a0)	;Ring Sync IRQ
 		bsr	SetChanProg
-		or.w	#INTF_SETCLR,d2
+		ori.w	#INTF_SETCLR,d2
 		move.w	d2,INTENA(a4)
 		rts
 
@@ -2110,10 +2110,10 @@ GetFourSample	;D0=Start,D1=End,D2=Octav,D3=Mode
 		move.b		d2,ch4_AverageVol(a0)
 		movem.l		(a7)+,d2-d3/a0
 		rts
-.2		and.l		#$0000ffff,d0
-		and.l		#$0000ffff,d1
-		and.l		#$000000ff,d2
-		and.l		#$000000ff,d3
+.2		andi.l		#$0000ffff,d0
+		andi.l		#$0000ffff,d1
+		andi.l		#$000000ff,d2
+		andi.l		#$000000ff,d3
 		movem.l		d4-d7/a1-a6,-(a7)
 		movem.l		d0-d3,-(a7)
 		sub.w		d0,d1
@@ -2178,7 +2178,7 @@ GetFourSample	;D0=Start,D1=End,D2=Octav,D3=Mode
 		beq.s		.8
 .7		move.b		(a1),d0
 		move.b		0(a4,d0.w),(a3)+	;Low
-		and.b		#$0f,d0
+		andi.b		#$0f,d0
 		add.l		d0,d5
 		add.l		d2,a1
 		cmp.l		a1,a2
@@ -2211,7 +2211,7 @@ GetFourSample	;D0=Start,D1=End,D2=Octav,D3=Mode
 AllocFourMem	;D0=Length, Result:D0=Address or 0!
 		movem.l		d1/a0-a1,-(a7)
 		addq.l		#3,d0
-		and.l		#$fffffffc,d0
+		andi.l		#$fffffffc,d0
 		addq.l		#8,d0
 		move.l		d0,-(a7)
 		move.l		#MEMF_PUBLIC+MEMF_CHIP,d1
@@ -2257,7 +2257,7 @@ CreateSample		;A0=Channeldata,A1=Sampledata,A2=SyncChanneldata
 		movem.l	d2-d7/a2-a6,-(a7)
 		move.w	d2,psb_PulseOffset(a6)
 		clr.b	ch_SyncIndNew(a0)	;Clear Sync or Ring ind.
-		and.b	#$fe,d0
+		andi.b	#$fe,d0
 		move.b	d0,ch_WaveNew(a0)	;New Waveform
 		move.w	ch_SamLen(a0),d2	;Sample Length
 		move.w	d2,ch_SamLenNew(a0)
@@ -2268,7 +2268,7 @@ CreateSample		;A0=Channeldata,A1=Sampledata,A2=SyncChanneldata
 		btst	#3,d0
 		bne	CreateSClear		;Test Bit - No Waveform
 		move.b	d0,d3
-		and.b	#$f0,d3
+		andi.b	#$f0,d3
 		beq	CreateSClear		;No Waveform
 		bmi	CreateSNoise		;Noise
 		btst	#4,d0
@@ -2286,10 +2286,10 @@ CreateSample		;A0=Channeldata,A1=Sampledata,A2=SyncChanneldata
 CreateSNoise					;Noise Creation
 		move.w	psb_LastNoise(a6),d1
 		move.l	psb_SIDSampleNoise(a6),a5
-		and.w	#$3fff,d1
+		andi.w	#$3fff,d1
 		cmp.w	#$3f00,d1
 		bls.s	.0
-		sub.w	#$3f00,d1
+		subi.w	#$3f00,d1
 .0		add.w	d1,a5
 		move.w	#$0100,ch_SamLenNew(a0)	;Sample length=$100
 		lea	$100(a1),a4
@@ -2326,7 +2326,7 @@ CreateSNoise					;Noise Creation
 		add.w	d0,psb_LastNoise(a6)
 		bra	CreateSExit
 .7		move.l	a5,a1
-		add.w	#$0100,psb_LastNoise(a6)
+		addi.w	#$0100,psb_LastNoise(a6)
 		bra	CreateSExit
 
 CreateSNormal					;Get Pulse,Saw or Tri
@@ -2416,7 +2416,7 @@ CreateSRSync
 		bcc	.6
 		move.l	a1,a4
 		clr.l	d5
-		and.l	#$0000ffff,d6
+		andi.l	#$0000ffff,d6
 		cmp.l	a3,a6
 		bhi	.6
 		move.l	a5,a1
@@ -2564,7 +2564,7 @@ CreateSSync					;Synchronize
 		move.l	a6,-(a7)
 		lea	$100(a5),a6
 		moveq	#$00,d6
-.4		and.l	#$0000ffff,d6
+.4		andi.l	#$0000ffff,d6
 		add.l	d7,d6
 		move.l	d6,d1
 		swap	d1
@@ -2601,7 +2601,7 @@ CreateSExit					;Exit
 
 GetWaveform
 		move.b	d0,d3
-		and.b	#$f0,d3
+		andi.b	#$f0,d3
 		cmp.b	#$70,d3
 		beq	GetPulSawTriWave
 		cmp.b	#$60,d3
@@ -2629,14 +2629,14 @@ GetTriSawWave	move.l	psb_SIDSampleTSaw(a6),a3
 
 GetPulWave	move.l	psb_SIDSamplePulse(a6),a3
 		add.w	psb_PulseOffset(a6),a3
-		and.w	#$0fff,d1		;Pulsewidth
+		andi.w	#$0fff,d1		;Pulsewidth
 		mulu	d2,d1
 		divu	#$0fff,d1
 		move.l	d1,d0
 		swap	d0
 		lsr.w	#4,d0
 		not.b	d0
-		add.b	#$80,d0
+		addi.b	#$80,d0
 		btst	#0,d1
 		beq.s	.1
 		lea	$0300(a3),a3
@@ -2644,7 +2644,7 @@ GetPulWave	move.l	psb_SIDSamplePulse(a6),a3
 		bra.s	.2
 .1		lea	$0100(a3),a3
 		move.b	d0,(a3)
-.2		and.w	#$fffe,d1
+.2		andi.w	#$fffe,d1
 		sub.w	d1,a3
 		move.l	a3,d0
 		rts
@@ -2675,7 +2675,7 @@ GetWaveSample	lea	MakeSIDSData2,a5
 		rts
 
 GetAndPulWave	move.l	a1,a4
-		and.w	#$0fff,d1		;Pulsewidth
+		andi.w	#$0fff,d1		;Pulsewidth
 		mulu	d2,d1
 		divu	#$0fff,d1
 		add.w	d1,a3
@@ -2687,7 +2687,7 @@ GetAndPulWave	move.l	a1,a4
 .1		move.l	d0,(a4)+
 		dbf	d3,.1
 .2		move.w	d1,d3
-		and.w	#$0003,d3
+		andi.w	#$0003,d3
 		subq.w	#1,d3
 		bmi.s	.4
 .3		move.b	d0,(a4)+
@@ -2696,7 +2696,7 @@ GetAndPulWave	move.l	a1,a4
 		sub.w	d1,d3
 		beq.s	.8
 		move.w	d3,d4
-		and.w	#$0003,d3
+		andi.w	#$0003,d3
 		subq.w	#1,d3
 		bmi.s	.6
 .5		move.b	(a3)+,(a4)+
@@ -2715,7 +2715,7 @@ SelectVolume
 		move.l	psb_C64Mem(a6),a5
 		add.l	#$0000D400,a5
 		move.b	sid_Volume(a5),d0
-		and.w	#$000f,d0
+		andi.w	#$000f,d0
 		add.w	d0,d0
 		add.w	d0,d0
 		move.l	psb_VolumePointers(a6,d0.w),psb_VolumePointer(a6)
@@ -2735,7 +2735,7 @@ MakeVolume
 		move.b	d1,d2
 		mulu	#$0040,d2
 		mulu	d0,d2
-		add.l	#1912,d2
+		addi.l	#1912,d2
 		divu	#3825,d2
 		move.b	d2,(a1)+
 		addq.b	#1,d1
@@ -2834,18 +2834,18 @@ MakeEnvelope	movem.l	d2-d7/a2-a6,-(a7)
 		move.l	a0,d1
 		sub.l	psb_EnvelopeMem(a6),d1
 		move.w	d1,-(a1)
-		sub.w	#$0011,d0
+		subi.w	#$0011,d0
 		bpl.s	.2
 
 		move.l	psb_AttackDecay(a6),a0
 		move.l	psb_AttDecRelStep(a6),a1
 		moveq	#$00,d0
 .3		move.w	d0,d1
-		and.w	#$00f0,d1
+		andi.w	#$00f0,d1
 		lsr.w	#2,d1
 		move.l	0(a1,d1.w),(a0)+
 		move.w	d0,d1
-		and.w	#$000f,d1
+		andi.w	#$000f,d1
 		lsl.w	#2,d1
 		move.l	0(a1,d1.w),(a0)+
 		addq.b	#1,d0
@@ -2856,12 +2856,12 @@ MakeEnvelope	movem.l	d2-d7/a2-a6,-(a7)
 		move.l	psb_SustainTable(a6),a2
 		moveq	#$00,d0
 .4		move.w	d0,d1
-		and.w	#$00f0,d1
+		andi.w	#$00f0,d1
 		lsr.w	#3,d1
 		move.w	0(a2,d1.w),(a0)+
 		addq.l	#2,a0
 		move.w	d0,d1
-		and.w	#$000f,d1
+		andi.w	#$000f,d1
 		lsl.w	#2,d1
 		move.l	0(a1,d1.w),(a0)+
 		addq.b	#1,d0
@@ -3068,7 +3068,7 @@ Make6502Emulator
 	move.w	(a3),d4
 	sub.w	-2(a3),d4
 	bsr.s	.Make
-	add.w	#$0100,d7
+	addi.w	#$0100,d7
 	tst.w	d7
 	bne.s	.1
 	movem.l	(a7)+,d0-d7/a0-a6
@@ -3295,8 +3295,8 @@ Jump6502Routine		;6502 CODE MUST BE ENDED WITH RTS!
 	movem.l	a2-a6,-(a7)
 	move.l	psb_C64Mem(a6),a0	;Set A0=MemBase
 
-	and.w	#$00ff,d7		;Set A1=SP
-	add.w	#$0101,d7
+	andi.w	#$00ff,d7		;Set A1=SP
+	addi.w	#$0101,d7
 	lea	$0(a0,d7.w),a1
 
 	move.l	psb_MMUMem(a6),a3	;Set A3=MMUTable
@@ -3318,7 +3318,7 @@ Jump6502Routine		;6502 CODE MUST BE ENDED WITH RTS!
 	add.l	a2,a4
 	add.l	a2,a5
 	and.l	d7,d4
-	or.w	#$8000,d4
+	ori.w	#$8000,d4
 	bra.s	.4
 .3	and.l	d6,d4
 .4	and.l	d7,d3
@@ -3763,7 +3763,7 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	move.l	psb_Chan4(a6),a2
 	tst.b	ch4_Active(a2)
 	bne.s	.D4181				;Channel Four Active
-	and.w	#$000f,d6
+	andi.w	#$000f,d6
 	lsl.w	#2,d6
 	move.l	psb_VolumePointers(a6,d6.w),psb_VolumePointer(a6)
 .D4181	move.l	d7,a6
@@ -4416,10 +4416,10 @@ SelectNewVolume
 		move.l	psb_C64Mem(a5),a5
 		add.l	#$D400,a5
 		move.b	sid_Volume(a5),d1
-		and.w	#$000f,d1
+		andi.w	#$000f,d1
 		cmp.w	#$000c,d1
 		bls.s	.1
-		and.w	#$000f,d0
+		andi.w	#$000f,d0
 		add.w	d0,d0
 		add.w	d0,d0
 		move.l	_PlaySidBase,a5
@@ -4787,21 +4787,21 @@ I08					;PHP
 	move.w	d5,-(a7)
 	move.b	(a7)+,d7		;B,D,I
 	move.w	d5,d6
-	and.w	#$0040,d6
+	andi.w	#$0040,d6
 	or.w	d6,d7
 	move.w	d4,d6
-	and.w	#$0001,d6
+	andi.w	#$0001,d6
 	or.w	d6,d7
 	tst.w	d3
 	bpl.s	I08b
-	or.w	#$0080,d7
+	ori.w	#$0080,d7
 I08b
 	tst.b	d3
 	bpl.s	I08c
-	or.w	#$0080,d7
+	ori.w	#$0080,d7
 I08c
 	bne.s	I08d
-	or.w	#$0002,d7
+	ori.w	#$0002,d7
 I08d
 	move.b	d7,-(a1)
 	NextInst
@@ -5085,12 +5085,12 @@ I28					;PLP
 	move.b	d4,d3
 	ext.w	d3
 	not.b	d3
-	and.w	#$8002,d3
+	andi.w	#$8002,d3
 	move.b	d4,-(a7)
 	move.w	(a7)+,d5
 	move.b	d4,d5
-	and.w	#$0c40,d5		;D,I,V
-	or.w	#$3000,d5		;B
+	andi.w	#$0c40,d5		;D,I,V
+	ori.w	#$3000,d5		;B
 	lsr.b	#1,d4
 	scs	d4			;C
 	CheckDecMode
@@ -5502,7 +5502,7 @@ I57					;+ LSR,EOR - Zero Page,X
 	NextInstStat
 
 I58					;CLI
-	and.w	#$FBFF,d5
+	andi.w	#$FBFF,d5
 	NextInstStat2
 
 I59					;EOR - Absolute,Y
@@ -5800,7 +5800,7 @@ I77					;+ ROR,ADC - Zero Page,X
 	NextInstStat
 
 I78					;SEI
-	or.w	#$0400,d5
+	ori.w	#$0400,d5
 	NextInstStat2
 
 I79					;ADC - Absolute,Y
@@ -5956,7 +5956,7 @@ I8A					;TXA
 	NextInstStat
 
 I8B					;+ MXA - Immediate
-	or.b	#$fe,d0
+	ori.b	#$fe,d0
 	and.b	(a6)+,d0
 	and.b	d1,d0
 	NextInstStat2
@@ -6131,7 +6131,7 @@ I9B					;+ STAX21SP - Absolute,Y
 	move.b	d0,d7
 	and.b	d1,d7
 	lea	1(a0,d7.l),a1
-	and.b	#$21,d7
+	andi.b	#$21,d7
 	move.b	d7,(a2)
 	NextInstStat2
 I9Bb
@@ -6396,7 +6396,7 @@ IB9					;LDA - Absolute,Y
 IBA					;TSX
 	move.w	a1,d1
 	sub.w	a0,d1
-	and.w	#$00ff,d1
+	andi.w	#$00ff,d1
 	subq.b	#1,d1
 	move.w	d1,d3			;N & Z
 	NextInst
@@ -6668,13 +6668,13 @@ ID7					;+ DEC,CMP - Zero Page,X
 	NextInst
 
 ID8					;CLD
-	and.w	#$F7FF,d5		;D
+	andi.w	#$F7FF,d5		;D
 	tst.w	d4			;D+
 	bpl.s	ID8a
 	move.l	#$FFFF0000,a2
 	add.l	a2,a4
 	add.l	a2,a5
-	and.w	#$7fff,d4
+	andi.w	#$7fff,d4
 	jmp	ID8a(pc,a2.l)
 ID8a
 	NextInstStat2
@@ -7007,13 +7007,13 @@ IF7					;+ INC,SBC - Zero Page,X
 	NextInstStat
 
 IF8					;SED
-	or.w	#$0800,d5		;D
+	ori.w	#$0800,d5		;D
 	tst.w	d4			;D+
 	bmi.s	IF8a
 	move.l	#$00010000,a2
 	add.l	a2,a4
 	add.l	a2,a5
-	or.w	#$8000,d4
+	ori.w	#$8000,d4
 	jmp	IF8a(pc,a2.l)
 IF8a
 	NextInstStat2
