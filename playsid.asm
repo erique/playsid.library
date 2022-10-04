@@ -10,7 +10,7 @@
 *	INCLUDES							*
 *=======================================================================*
 	NOLIST
-		include	lvo/exec_lib.i
+		include	exec/exec_lib.i
 		include	exec/execbase.i
 		include	exec/initializers.i
 		include	exec/memory.i
@@ -18,7 +18,7 @@
 		include	exec/resident.i
 		include intuition/intuition.i
 		include	resources/cia.i
-		include	lvo/cia_lib.i
+		include	resources/cia_lib.i
 		include	hardware/custom.i
 		include	hardware/cia.i
 		include	hardware/dmabits.i
