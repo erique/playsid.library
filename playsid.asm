@@ -566,11 +566,13 @@ Init64		movem.l	d2-d7,-(a7)
 		rts
 
 *-----------------------------------------------------------------------*
-Play64		bsr	EmulNextStep
-		bsr	DoSound
+Play64:
+        move    #$0f0,$dff180
+        bsr	EmulNextStep
+		;bsr	DoSound
 		bsr	CalcTime
-		bsr	ReadDisplayData
-		bsr	DisplayRequest
+		;bsr	ReadDisplayData
+		;bsr	DisplayRequest
 		bsr	CheckC64TimerA
 		rts
 
@@ -3879,47 +3881,48 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 *=======================================================================*
 *	INTERRUPT HANDLING ROUTINES					*
 *=======================================================================*
-OpenIRQ		move.l	a6,timerAIntrPSB
+OpenIRQ		
+        ;move.l	a6,timerAIntrPSB
 		move.l	a6,PlayIntrPSB
-		move.l	psb_Chan1(a6),level4Intr1Data
+	    move.l	psb_Chan1(a6),level4Intr1Data
 		move.l	psb_Chan2(a6),level4Intr2Data
 		move.l	psb_Chan3(a6),level4Intr3Data
 		move.l	psb_Chan4(a6),level4Intr4Data
 
 		lea	_custom,a0
-		move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTENA(a0)
-		move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTREQ(a0)
+		;move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTENA(a0)
+		;move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTREQ(a0)
 
 		tst.w	psb_IntVecAudFlag(a6)
 		bne.s	.1
 
-		moveq	#INTB_AUD0,d0		; Allocate Level 4
-		lea	level4Intr1,a1
-		move.l	a6,-(a7)
-		CALLEXEC	SetIntVector
-		move.l	(a7)+,a6
-		move.l	d0,psb_OldIntVecAud0(a6)
-
-		moveq	#INTB_AUD1,d0
-		lea	level4Intr2,a1
-		move.l	a6,-(a7)
-		CALLEXEC	SetIntVector
-		move.l	(a7)+,a6
-		move.l	d0,psb_OldIntVecAud1(a6)
-
-		moveq	#INTB_AUD2,d0
-		lea	level4Intr3,a1
-		move.l	a6,-(a7)
-		CALLEXEC	SetIntVector
-		move.l	(a7)+,a6
-		move.l	d0,psb_OldIntVecAud2(a6)
-
-		moveq	#INTB_AUD3,d0
-		lea	level4Intr4,a1
-		move.l	a6,-(a7)
-		CALLEXEC	SetIntVector
-		move.l	(a7)+,a6
-		move.l	d0,psb_OldIntVecAud3(a6)
+		;moveq	#INTB_AUD0,d0		; Allocate Level 4
+		;lea	level4Intr1,a1
+		;move.l	a6,-(a7)
+		;CALLEXEC	SetIntVector
+		;move.l	(a7)+,a6
+		;move.l	d0,psb_OldIntVecAud0(a6)
+;
+		;moveq	#INTB_AUD1,d0
+		;lea	level4Intr2,a1
+		;move.l	a6,-(a7)
+		;CALLEXEC	SetIntVector
+		;move.l	(a7)+,a6
+		;move.l	d0,psb_OldIntVecAud1(a6)
+;
+		;moveq	#INTB_AUD2,d0
+		;lea	level4Intr3,a1
+		;move.l	a6,-(a7)
+		;CALLEXEC	SetIntVector
+		;move.l	(a7)+,a6
+		;move.l	d0,psb_OldIntVecAud2(a6)
+;
+		;moveq	#INTB_AUD3,d0
+		;lea	level4Intr4,a1
+		;move.l	a6,-(a7)
+		;CALLEXEC	SetIntVector
+		;move.l	(a7)+,a6
+		;move.l	d0,psb_OldIntVecAud3(a6)
 
 		move.w	#1,psb_IntVecAudFlag(a6)
 
@@ -3931,16 +3934,16 @@ OpenIRQ		move.l	a6,timerAIntrPSB
 		move.l	d0,_CiabBase
 		beq.s	.error
 
-		tst.w	psb_TimerAFlag(a6)
-		bne.s	.2
-		lea	timerAIntr,a1	; Allocate Timers
-		moveq	#CIAICRB_TA,d0
-		move.l	a6,-(a7)
-		CALLCIAB	AddICRVector
-		move.l	(a7)+,a6
-		tst.l	d0
-		bne.s	.error
-		move.w	#1,psb_TimerAFlag(a6)
+		;tst.w	psb_TimerAFlag(a6)
+		;bne.s	.2
+		;lea	timerAIntr,a1	; Allocate Timers
+		;moveq	#CIAICRB_TA,d0
+		;move.l	a6,-(a7)
+		;CALLCIAB	AddICRVector
+		;move.l	(a7)+,a6
+		;tst.l	d0
+		;bne.s	.error
+		;move.w	#1,psb_TimerAFlag(a6)
 
 .2		tst.w	psb_TimerBFlag(a6)
 		bne.s	.3
@@ -3970,37 +3973,37 @@ CloseIRQ	tst.w	psb_TimerBFlag(a6)
 		move.l	(a7)+,a6
 		move.w	#0,psb_TimerBFlag(a6)
 .1
-		tst.w	psb_TimerAFlag(a6)
-		beq.s	.2
-		lea	timerAIntr,a1
-		moveq	#CIAICRB_TA,d0
-		move.l	a6,-(a7)
-		CALLCIAB	RemICRVector
-		move.l	(a7)+,a6
-		move.w	#0,psb_TimerAFlag(a6)
+		;tst.w	psb_TimerAFlag(a6)
+		;beq.s	.2
+		;lea	timerAIntr,a1
+		;moveq	#CIAICRB_TA,d0
+		;move.l	a6,-(a7)
+		;CALLCIAB	RemICRVector
+		;move.l	(a7)+,a6
+		;move.w	#0,psb_TimerAFlag(a6)
 .2
 		tst.w	psb_IntVecAudFlag(a6)
 		beq.s	.3
-		moveq	#INTB_AUD3,d0	; Deallocate Level 4
-		move.l	psb_OldIntVecAud3(a6),a1
-		move.l	a6,-(a7)
-		CALLEXEC	SetIntVector
-		move.l	(a7)+,a6
-		moveq	#INTB_AUD2,d0
-		move.l	psb_OldIntVecAud2(a6),a1
-		move.l	a6,-(a7)
-		CALLEXEC	SetIntVector
-		move.l	(a7)+,a6
-		moveq	#INTB_AUD1,d0
-		move.l	psb_OldIntVecAud1(a6),a1
-		move.l	a6,-(a7)
-		CALLEXEC	SetIntVector
-		move.l	(a7)+,a6
-		moveq	#INTB_AUD0,d0
-		move.l	psb_OldIntVecAud0(a6),a1
-		move.l	a6,-(a7)
-		CALLEXEC	SetIntVector
-		move.l	(a7)+,a6
+		;moveq	#INTB_AUD3,d0	; Deallocate Level 4
+		;move.l	psb_OldIntVecAud3(a6),a1
+		;move.l	a6,-(a7)
+		;CALLEXEC	SetIntVector
+		;move.l	(a7)+,a6
+		;moveq	#INTB_AUD2,d0
+		;move.l	psb_OldIntVecAud2(a6),a1
+		;move.l	a6,-(a7)
+		;CALLEXEC	SetIntVector
+		;move.l	(a7)+,a6
+		;moveq	#INTB_AUD1,d0
+		;move.l	psb_OldIntVecAud1(a6),a1
+		;move.l	a6,-(a7)
+		;CALLEXEC	SetIntVector
+		;move.l	(a7)+,a6
+		;moveq	#INTB_AUD0,d0
+		;move.l	psb_OldIntVecAud0(a6),a1
+		;move.l	a6,-(a7)
+		;CALLEXEC	SetIntVector
+		;move.l	(a7)+,a6
 		move.w	#0,psb_IntVecAudFlag(a6)
 .3
 		rts
@@ -4019,10 +4022,10 @@ InitTimers
 
 *-----------------------------------------------------------------------*
 SetTimerA
-		lea	_ciab,a0
-		move.b	d0,ciatalo(a0)
-		lsr.w	#8,d0
-		move.b	d0,ciatahi(a0)
+		;lea	_ciab,a0
+		;move.b	d0,ciatalo(a0)
+		;lsr.w	#8,d0
+		;move.b	d0,ciatahi(a0)
 		rts
 
 *-----------------------------------------------------------------------*
@@ -4035,9 +4038,9 @@ SetTimerB
 
 *-----------------------------------------------------------------------*
 StopTimerA
-		lea	_ciab,a0
-		and.b	#CIACRAF_TODIN+CIACRAF_SPMODE+CIACRAF_OUTMODE+CIACRAF_PBON,ciacra(a0)	; Timer A Cia B
-		bclr	#CIACRAB_START,ciacra(a0)
+		;lea	_ciab,a0
+		;and.b	#CIACRAF_TODIN+CIACRAF_SPMODE+CIACRAF_OUTMODE+CIACRAF_PBON,ciacra(a0)	; Timer A Cia B
+		;bclr	#CIACRAB_START,ciacra(a0)
 		rts
 
 *-----------------------------------------------------------------------*
@@ -4049,8 +4052,8 @@ StopTimerB
 
 *-----------------------------------------------------------------------*
 StartTimerA
-		lea	_ciab,a0
-		bset	#CIACRBB_START,ciacra(a0)
+		;lea	_ciab,a0
+		;bset	#CIACRBB_START,ciacra(a0)
 		rts
 
 *-----------------------------------------------------------------------*
@@ -4062,21 +4065,20 @@ StartTimerB
 *-----------------------------------------------------------------------*
 PlayDisable					;Turns off all Audio
 		bsr	StopTimerB
-		lea	_custom,a0
-		move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTENA(a0)
-		move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTREQ(a0)
-		move.w	#DMAF_AUD0+DMAF_AUD1+DMAF_AUD2+DMAF_AUD3,DMACON(a0)
-		move.w	#$0001,AUD0PER(a0)
-		move.w	#$0001,AUD1PER(a0)
-		move.w	#$0001,AUD2PER(a0)
-		move.w	#$0001,AUD3PER(a0)
+		;move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTENA(a0)
+		;move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTREQ(a0)
+		;move.w	#DMAF_AUD0+DMAF_AUD1+DMAF_AUD2+DMAF_AUD3,DMACON(a0)
+		;move.w	#$0001,AUD0PER(a0)
+		;move.w	#$0001,AUD1PER(a0)
+		;move.w	#$0001,AUD2PER(a0)
+		;move.w	#$0001,AUD3PER(a0)
 		bsr	StopTimerA
-		moveq	#0,d0
-		lea	_custom,a0
-		move.w	d0,AUD0VOL(a0)
-		move.w	d0,AUD1VOL(a0)
-		move.w	d0,AUD2VOL(a0)
-		move.w	d0,AUD3VOL(a0)
+		;moveq	#0,d0
+		;lea	_custom,a0
+		;move.w	d0,AUD0VOL(a0)
+		;move.w	d0,AUD1VOL(a0)
+		;move.w	d0,AUD2VOL(a0)
+		;move.w	d0,AUD3VOL(a0)
 		rts
 
 *-----------------------------------------------------------------------*
@@ -4585,7 +4587,6 @@ level4Intr4	dc.l	0		; Audio Interrupt
 		dc.l	level4Name4
 level4Intr4Data	dc.l	0
 		dc.l	level4Handler4
-
 timerAIntr	dc.l	0		; Envelope
 		dc.l	0
 		dc.b	2
