@@ -6,6 +6,17 @@
 *									*
 *=======================================================================*
 
+* Constants
+PAL_CLOCK=3546895
+SAMPLING_FREQ=44100/2
+PAULA_PERIOD=(PAL_CLOCK+SAMPLING_FREQ/2)/SAMPLING_FREQ
+SAMPLES_PER_FRAME set (SAMPLING_FREQ+25)/50
+SAMPLES_PER_HALF_FRAME set (SAMPLING_FREQ+50)/100
+; Must be even for Paula 
+ ifne SAMPLES_PER_HALF_FRAME&1
+SAMPLES_PER_HALF_FRAME set SAMPLES_PER_HALF_FRAME+1
+ endif
+ 
 *=======================================================================*
 *	INCLUDES							*
 *=======================================================================*
@@ -16,6 +27,7 @@
 		include	exec/memory.i
 		include	exec/libraries.i
 		include	exec/resident.i
+        include exec/tasks.i
 		include intuition/intuition.i
 		include	resources/cia.i
 		include	resources/cia_lib.i
@@ -23,7 +35,7 @@
 		include	hardware/cia.i
 		include	hardware/dmabits.i
 		include	hardware/intbits.i
-
+        include dos/dos_lib.i
 		include	playsid_libdefs.i
 	LIST
 *=======================================================================*
@@ -567,7 +579,7 @@ Init64		movem.l	d2-d7,-(a7)
 
 *-----------------------------------------------------------------------*
 Play64:
-        move    #$0f0,$dff180
+       ; move    #$0f0,$dff180
         bsr	EmulNextStep
 		;bsr	DoSound
 		bsr	CalcTime
@@ -931,7 +943,20 @@ InitSID		movem.l	a2-a3,-(a7)
 		move.w	#-1,ch_SamPer(a0)
 		move.w	#4,ch_SamLen(a0)
 
-		movem.l	(a7)+,a2-a3
+    movem.l d0-a6,-(sp)
+    lea     Sid,a0
+    jsr     sid_constructor
+    move.l  #985248,d0
+    moveq   #SAMPLING_METHOD_SAMPLE_FAST,d1
+    move.l  #SAMPLING_FREQ,d2
+    lea     Sid,a0
+    jsr     sid_set_sampling_parameters
+	lea     Sid,a0
+    jsr     sid_reset
+    movem.l (sp)+,d0-a6
+  
+  
+    	movem.l	(a7)+,a2-a3
 		rts
 .Clear
 		clr.b	(a0)+
@@ -3633,248 +3658,287 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 .D400						;80
 	move.w	#$D400,d7
 	move.b	d6,0(a0,d7.l)
+    bsr     writeSIDRegister
 	Next_Inst
 .D401
 	move.w	#$D401,d7
 	move.b	d6,0(a0,d7.l)
+    bsr     writeSIDRegister
 	Next_Inst
 .D402
 	move.w	#$D402,d7
 	move.b	d6,0(a0,d7.l)
+    bsr     writeSIDRegister
 	Next_Inst
 .D403
 	move.w	#$D403,d7
 	move.b	d6,0(a0,d7.l)
+    bsr     writeSIDRegister
 	Next_Inst
 .D404
 	move.w	#$D404,d7
 	move.b	d6,0(a0,d7.l)
-	move.l	a6,-(a7)
-	move.l	_PlaySidBase,a6
-	move.l	psb_Enve1(a6),a2
-	lsr.b	#1,d6
-	bcs.s	.D4041			;Gate turned on ?
-	clr.w	env_Mode(a2)		;Release
-	move.l	(a7)+,a6
-	Next_Inst
-.D4041
-	tst.b	env_Mode(a2)
-	bne.s	.D4042			;Gate was already on ?
-	or.b	#$01,$D420-$D404(a0,d7.l)	;New Envelope
-	move.w	env_CurrentAddr(a2),d7
-	move.l	psb_EnvelopeMem(a6),a3
-	move.b	(a3,d7.l),d6
-	move.l	psb_AttackTable(a6),a3
-	add.w	d6,d6
-	move.w	0(a3,d6.w),env_CurrentAddr(a2)
-	moveq	#$00,d6
-	move.l	psb_MMUMem(a6),a3
-	st	env_Mode(a2)			;Attack
-.D4042
-	move.l	(a7)+,a6
+    bsr     writeSIDRegister
+;	move.l	a6,-(a7)
+;	move.l	_PlaySidBase,a6
+;	move.l	psb_Enve1(a6),a2
+;	lsr.b	#1,d6
+;	bcs.s	.D4041			;Gate turned on ?
+;	clr.w	env_Mode(a2)		;Release
+;	move.l	(a7)+,a6
+;	Next_Inst
+;.D4041
+;	tst.b	env_Mode(a2)
+;	bne.s	.D4042			;Gate was already on ?
+;	or.b	#$01,$D420-$D404(a0,d7.l)	;New Envelope
+;	move.w	env_CurrentAddr(a2),d7
+;	move.l	psb_EnvelopeMem(a6),a3
+;	move.b	(a3,d7.l),d6
+;	move.l	psb_AttackTable(a6),a3
+;	add.w	d6,d6
+;	move.w	0(a3,d6.w),env_CurrentAddr(a2)
+;	moveq	#$00,d6
+;	move.l	psb_MMUMem(a6),a3
+;	st	env_Mode(a2)			;Attack
+;.D4042
+;	move.l	(a7)+,a6
 	Next_Inst
 .D405
 	move.w	#$D405,d7
 	move.b	d6,0(a0,d7.l)
-	move.l	a6,d7
-	move.l	_PlaySidBase,a6
-	move.l	psb_Enve1(a6),a2
-	lsl.w	#3,d6
-	move.l	psb_AttackDecay(a6),a3
-	move.l	0(a3,d6.w),env_Attack(a2)
-	move.l	4(a3,d6.w),env_Decay(a2)
-	moveq	#$00,d6
-	move.l	psb_MMUMem(a6),a3
-	move.l	d7,a6
-	moveq	#$00,d7
+    bsr     writeSIDRegister
+;	move.l	a6,d7
+;	move.l	_PlaySidBase,a6
+;	move.l	psb_Enve1(a6),a2
+;	lsl.w	#3,d6
+;	move.l	psb_AttackDecay(a6),a3
+;	move.l	0(a3,d6.w),env_Attack(a2)
+;	move.l	4(a3,d6.w),env_Decay(a2)
+;	moveq	#$00,d6
+;	move.l	psb_MMUMem(a6),a3
+;	move.l	d7,a6
+;	moveq	#$00,d7
 	Next_Inst
 .D406
 	move.w	#$D406,d7
 	move.b	d6,0(a0,d7.l)
-	move.l	a6,d7
-	move.l	_PlaySidBase,a6
-	move.l	psb_Enve1(a6),a2
-	lsl.w	#3,d6
-	move.l	psb_SustainRelease(a6),a3
-	move.w	0(a3,d6.w),env_Sustain(a2)
-	move.l	4(a3,d6.w),env_Release(a2)
-	moveq	#$00,d6
-	move.l	psb_MMUMem(a6),a3
-	move.l	d7,a6
-	moveq	#$00,d7
+    bsr     writeSIDRegister
+;	move.l	a6,d7
+;	move.l	_PlaySidBase,a6
+;	move.l	psb_Enve1(a6),a2
+;	lsl.w	#3,d6
+;	move.l	psb_SustainRelease(a6),a3
+;	move.w	0(a3,d6.w),env_Sustain(a2)
+;	move.l	4(a3,d6.w),env_Release(a2)
+;	moveq	#$00,d6
+;	move.l	psb_MMUMem(a6),a3
+;	move.l	d7,a6
+;	moveq	#$00,d7
 	Next_Inst
 .D407
 	move.w	#$D407,d7
 	move.b	d6,0(a0,d7.l)
+    bsr     writeSIDRegister
 	Next_Inst
 .D408
 	move.w	#$D408,d7
 	move.b	d6,0(a0,d7.l)
+    bsr     writeSIDRegister
 	Next_Inst
 .D409
 	move.w	#$D409,d7
 	move.b	d6,0(a0,d7.l)
+    bsr     writeSIDRegister
 	Next_Inst
 .D40A
 	move.w	#$D40A,d7
 	move.b	d6,0(a0,d7.l)
+    bsr     writeSIDRegister
 	Next_Inst
 .D40B
 	move.w	#$D40B,d7
 	move.b	d6,0(a0,d7.l)
-	move.l	a6,-(a7)
-	move.l	_PlaySidBase,a6
-	move.l	psb_Enve2(a6),a2
-	lsr.b	#1,d6
-	bcs.s	.D40B1			;Gate turned on ?
-	clr.w	env_Mode(a2)		;Release
-	move.l	(a7)+,a6
-	Next_Inst
-.D40B1
-	tst.b	env_Mode(a2)
-	bne.s	.D40B2			;Gate was already on ?
-	or.b	#$02,$D420-$D40B(a0,d7.l)	;New Envelope
-	move.w	env_CurrentAddr(a2),d7
-	move.l	psb_EnvelopeMem(a6),a3
-	move.b	(a3,d7.l),d6
-	move.l	psb_AttackTable(a6),a3
-	add.w	d6,d6
-	move.w	0(a3,d6.w),env_CurrentAddr(a2)
-	moveq	#$00,d6
-	move.l	psb_MMUMem(a6),a3
-	st	env_Mode(a2)			;Attack
-.D40B2
-	move.l	(a7)+,a6
+    bsr     writeSIDRegister
+;	move.l	a6,-(a7)
+;	move.l	_PlaySidBase,a6
+;	move.l	psb_Enve2(a6),a2
+;	lsr.b	#1,d6
+;	bcs.s	.D40B1			;Gate turned on ?
+;	clr.w	env_Mode(a2)		;Release
+;	move.l	(a7)+,a6
+;	Next_Inst
+;.D40B1
+;	tst.b	env_Mode(a2)
+;	bne.s	.D40B2			;Gate was already on ?
+;	or.b	#$02,$D420-$D40B(a0,d7.l)	;New Envelope
+;	move.w	env_CurrentAddr(a2),d7
+;	move.l	psb_EnvelopeMem(a6),a3
+;	move.b	(a3,d7.l),d6
+;	move.l	psb_AttackTable(a6),a3
+;	add.w	d6,d6
+;	move.w	0(a3,d6.w),env_CurrentAddr(a2)
+;	moveq	#$00,d6
+;	move.l	psb_MMUMem(a6),a3
+;	st	env_Mode(a2)			;Attack
+;.D40B2
+;	move.l	(a7)+,a6
 	Next_Inst
 .D40C
 	move.w	#$D40C,d7
 	move.b	d6,0(a0,d7.l)
-	move.l	a6,d7
-	move.l	_PlaySidBase,a6
-	move.l	psb_Enve2(a6),a2
-	lsl.w	#3,d6
-	move.l	psb_AttackDecay(a6),a3
-	move.l	0(a3,d6.w),env_Attack(a2)
-	move.l	4(a3,d6.w),env_Decay(a2)
-	moveq	#$00,d6
-	move.l	psb_MMUMem(a6),a3
-	move.l	d7,a6
-	moveq	#$00,d7
+    bsr     writeSIDRegister
+;	move.l	a6,d7
+;	move.l	_PlaySidBase,a6
+;	move.l	psb_Enve2(a6),a2
+;	lsl.w	#3,d6
+;	move.l	psb_AttackDecay(a6),a3
+;	move.l	0(a3,d6.w),env_Attack(a2)
+;	move.l	4(a3,d6.w),env_Decay(a2)
+;	moveq	#$00,d6
+;	move.l	psb_MMUMem(a6),a3
+;	move.l	d7,a6
+;	moveq	#$00,d7
 	Next_Inst
 .D40D
 	move.w	#$D40D,d7
 	move.b	d6,0(a0,d7.l)
-	move.l	a6,d7
-	move.l	_PlaySidBase,a6
-	move.l	psb_Enve2(a6),a2
-	lsl.w	#3,d6
-	move.l	psb_SustainRelease(a6),a3
-	move.w	0(a3,d6.w),env_Sustain(a2)
-	move.l	4(a3,d6.w),env_Release(a2)
-	moveq	#$00,d6
-	move.l	psb_MMUMem(a6),a3
-	move.l	d7,a6
-	moveq	#$00,d7
+    bsr     writeSIDRegister
+;	move.l	a6,d7
+;	move.l	_PlaySidBase,a6
+;	move.l	psb_Enve2(a6),a2
+;	lsl.w	#3,d6
+;	move.l	psb_SustainRelease(a6),a3
+;	move.w	0(a3,d6.w),env_Sustain(a2)
+;	move.l	4(a3,d6.w),env_Release(a2)
+;	moveq	#$00,d6
+;	move.l	psb_MMUMem(a6),a3
+;	move.l	d7,a6
+;	moveq	#$00,d7
 	Next_Inst
 .D40E
 	move.w	#$D40E,d7
 	move.b	d6,0(a0,d7.l)
+    bsr     writeSIDRegister
 	Next_Inst
 .D40F
 	move.w	#$D40F,d7
 	move.b	d6,0(a0,d7.l)
+    bsr     writeSIDRegister
 	Next_Inst
 .D410
 	move.w	#$D410,d7
 	move.b	d6,0(a0,d7.l)
+    bsr     writeSIDRegister
 	Next_Inst
 .D411
 	move.w	#$D411,d7
 	move.b	d6,0(a0,d7.l)
+    bsr     writeSIDRegister
 	Next_Inst
 .D412
 	move.w	#$D412,d7
 	move.b	d6,0(a0,d7.l)
-	move.l	a6,-(a7)
-	move.l	_PlaySidBase,a6
-	move.l	psb_Enve3(a6),a2
-	lsr.b	#1,d6
-	bcs.s	.D4121			;Gate turned on ?
-	clr.w	env_Mode(a2)		;Release
-	move.l	(a7)+,a6
-	Next_Inst
-.D4121
-	tst.b	env_Mode(a2)
-	bne.s	.D4122			;Gate was already on ?
-	or.b	#$04,$D420-$D412(a0,d7.l)	;New Envelope
-	move.w	env_CurrentAddr(a2),d7
-	move.l	psb_EnvelopeMem(a6),a3
-	move.b	(a3,d7.l),d6
-	move.l	psb_AttackTable(a6),a3
-	add.w	d6,d6
-	move.w	0(a3,d6.w),env_CurrentAddr(a2)
-	moveq	#$00,d6
-	move.l	psb_MMUMem(a6),a3
-	st	env_Mode(a2)			;Attack
-.D4122
-	move.l	(a7)+,a6
+    bsr     writeSIDRegister
+;	move.l	a6,-(a7)
+;	move.l	_PlaySidBase,a6
+;	move.l	psb_Enve3(a6),a2
+;	lsr.b	#1,d6
+;	bcs.s	.D4121			;Gate turned on ?
+;	clr.w	env_Mode(a2)		;Release
+;	move.l	(a7)+,a6
+;	Next_Inst
+;.D4121
+;	tst.b	env_Mode(a2)
+;	bne.s	.D4122			;Gate was already on ?
+;	or.b	#$04,$D420-$D412(a0,d7.l)	;New Envelope
+;	move.w	env_CurrentAddr(a2),d7
+;	move.l	psb_EnvelopeMem(a6),a3
+;	move.b	(a3,d7.l),d6
+;	move.l	psb_AttackTable(a6),a3
+;	add.w	d6,d6
+;	move.w	0(a3,d6.w),env_CurrentAddr(a2)
+;	moveq	#$00,d6
+;	move.l	psb_MMUMem(a6),a3
+;	st	env_Mode(a2)			;Attack
+;.D4122
+;	move.l	(a7)+,a6
 	Next_Inst
 .D413
 	move.w	#$D413,d7
 	move.b	d6,0(a0,d7.l)
-	move.l	a6,d7
-	move.l	_PlaySidBase,a6
-	move.l	psb_Enve3(a6),a2
-	lsl.w	#3,d6
-	move.l	psb_AttackDecay(a6),a3
-	move.l	0(a3,d6.w),env_Attack(a2)
-	move.l	4(a3,d6.w),env_Decay(a2)
-	moveq	#$00,d6
-	move.l	psb_MMUMem(a6),a3
-	move.l	d7,a6
-	moveq	#$00,d7
+    bsr     writeSIDRegister
+;	move.l	a6,d7
+;	move.l	_PlaySidBase,a6
+;	move.l	psb_Enve3(a6),a2
+;	lsl.w	#3,d6
+;	move.l	psb_AttackDecay(a6),a3
+;	move.l	0(a3,d6.w),env_Attack(a2)
+;	move.l	4(a3,d6.w),env_Decay(a2)
+;	moveq	#$00,d6
+;	move.l	psb_MMUMem(a6),a3
+;	move.l	d7,a6
+;	moveq	#$00,d7
 	Next_Inst
 .D414
 	move.w	#$D414,d7
 	move.b	d6,0(a0,d7.l)
-	move.l	a6,d7
-	move.l	_PlaySidBase,a6
-	move.l	psb_Enve3(a6),a2
-	lsl.w	#3,d6
-	move.l	psb_SustainRelease(a6),a3
-	move.w	0(a3,d6.w),env_Sustain(a2)
-	move.l	4(a3,d6.w),env_Release(a2)
-	moveq	#$00,d6
-	move.l	psb_MMUMem(a6),a3
-	move.l	d7,a6
-	moveq	#$00,d7
+    bsr     writeSIDRegister
+;	move.b	d6,0(a0,d7.l)
+;	move.l	a6,d7
+;	move.l	_PlaySidBase,a6
+;	move.l	psb_Enve3(a6),a2
+;	lsl.w	#3,d6
+;	move.l	psb_SustainRelease(a6),a3
+;	move.w	0(a3,d6.w),env_Sustain(a2)
+;	move.l	4(a3,d6.w),env_Release(a2)
+;	moveq	#$00,d6
+;	move.l	psb_MMUMem(a6),a3
+;	move.l	d7,a6
+;	moveq	#$00,d7
 	Next_Inst
 .D415
 	move.w	#$D415,d7
 	move.b	d6,0(a0,d7.l)
+    bsr     writeSIDRegister
 	Next_Inst
 .D416
 	move.w	#$D416,d7
 	move.b	d6,0(a0,d7.l)
+    bsr     writeSIDRegister
 	Next_Inst
 .D417
 	move.w	#$D417,d7
 	move.b	d6,0(a0,d7.l)
+    bsr     writeSIDRegister
 	Next_Inst
 .D418
 	move.w	#$D418,d7
 	move.b	d6,0(a0,d7.l)
-	move.l	a6,d7
-	move.l	_PlaySidBase,a6
-	move.l	psb_Chan4(a6),a2
-	tst.b	ch4_Active(a2)
-	bne.s	.D4181				;Channel Four Active
-	andi.w	#$000f,d6
-	lsl.w	#2,d6
-	move.l	psb_VolumePointers(a6,d6.w),psb_VolumePointer(a6)
-.D4181	move.l	d7,a6
-	moveq	#$00,d7
+    bsr     writeSIDRegister
+;	move.l	a6,d7
+;	move.l	_PlaySidBase,a6
+;	move.l	psb_Chan4(a6),a2
+;	tst.b	ch4_Active(a2)
+;	bne.s	.D4181				;Channel Four Active
+;	andi.w	#$000f,d6
+;	lsl.w	#2,d6
+;	move.l	psb_VolumePointers(a6,d6.w),psb_VolumePointer(a6)
+;.D4181	move.l	d7,a6
+;	moveq	#$00,d7
 	Next_Inst
+
+
+* in:
+*    d6 = data
+*    d7 = address
+writeSIDRegister:
+    movem.l d0-d2/a0/a1,-(sp)
+    move.b  d6,d0
+    move.b  d7,d1
+    lea     Sid,a0
+    jsr     sid_write
+    movem.l (sp)+,d0-d2/a0/a1
+    rts
 
 *-----------------------------------------------------------------------*
 
@@ -3956,7 +4020,9 @@ OpenIRQ
 		bne.s	.error
 		move.w	#1,psb_TimerBFlag(a6)
 
-.3		bsr	PlayDisable
+.3		
+        jsr createWorkerTask
+        bsr	PlayDisable
 		moveq	#0,d0
 		rts
 .error		bsr	CloseIRQ
@@ -4006,6 +4072,7 @@ CloseIRQ	tst.w	psb_TimerBFlag(a6)
 		;move.l	(a7)+,a6
 		move.w	#0,psb_IntVecAudFlag(a6)
 .3
+        jsr     stopWorkerTask
 		rts
 
 *-----------------------------------------------------------------------*
@@ -7057,3 +7124,162 @@ _PlaySidBase	ds.l	1
 
 *-----------------------------------------------------------------------*
 		include	external.asm
+
+        include resid-68k.s
+
+        section    bob,code
+
+createWorkerTask:
+  
+    movem.l d0-a6,-(sp)
+    tst.b   workerStatus
+    bne     .x
+
+    lea     workerTaskStruct,a0
+    move.b  #NT_TASK,LN_TYPE(a0)
+    move.b  #-50,LN_PRI(a0)
+    move.l  #.workerTaskName,LN_NAME(a0)
+    lea     workerTaskStack,a1
+    move.l  a1,TC_SPLOWER(a0)
+    lea     4096(a1),a1
+    move.l  a1,TC_SPUPPER(a0)
+    move.l  a1,TC_SPREG(a0)
+
+    move.l  a0,a1
+    lea     workerEntry(pc),a2
+    sub.l   a3,a3
+    move.l  4.w,a6
+    jsr     _LVOAddTask(a6)
+.x
+    movem.l (sp)+,d0-a6
+    rts
+
+.workerTaskName
+    dc.b    "Wrkr",0
+    even
+
+stopWorkerTask
+    
+    movem.l d0-a6,-(sp)
+    tst.b   workerStatus
+    beq     .x
+    move.b  #-1,workerStatus
+
+    move.l  4.w,a6
+    lea     .DOSName(pc),a1
+    jsr     _LVOOldOpenLibrary(a6)
+    move.l  d0,a6
+.loop
+    tst.b   workerStatus
+    beq     .y
+    moveq   #1,d1
+    jsr     _LVODelay(a6)
+    bra     .loop
+.y
+    move.l  a6,a1
+    move.l  4.w,a6
+    jsr     _LVOCloseLibrary(a6)
+.x 
+    movem.l (sp)+,d0-a6
+    rts
+
+.DOSName
+    dc.b    "dos.library",0
+    even
+
+
+workerEntry
+    move.b  #1,workerStatus
+
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
+    move.w  #DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
+    move    #PAULA_PERIOD,$a6+$dff000
+    move    #64,$a8+$dff000
+
+    lea     buffer1,a2
+    lea     buffer2,a3
+    move.l  a2,$a0+$dff000 
+
+    bsr     fillBufferA2
+    move    d0,$a4+$dff000   * words
+
+    bsr     dmawait
+    move    #DMAF_SETCLR!DMAF_AUD0,dmacon+$dff000
+
+    ; buffer A now plays
+    ; interrupt will be triggered soon to queue the next sample
+    ; wait for the interrupt and queue buffer B
+    ; fill buffer B
+    ; after A has played, B will start
+    ; interrupt will be triggered
+    ; queue buffer A
+    ; fill A
+    ; ... etc
+.loop
+    move.w  intreqr+$dff000,d0
+    btst    #INTB_AUD0,d0
+    beq.b   .1
+
+    move    .bob,$dff180
+    not	    .bob
+
+    * Switch buffers and fill
+    exg     a2,a3
+    move.l  a2,$a0+$dff000 
+    bsr     fillBufferA2
+    move    d0,$a4+$dff000   * words
+    
+    move.w  #INTF_AUD0,intreq+$dff000
+.1
+    tst.b   workerStatus
+    bpl     .loop
+    clr.b   workerStatus
+    rts
+
+.bob dc.w   $f0f
+
+
+fillBufferA2:
+    lea     Sid,a0
+    move.l  a2,a1           * target buffer
+    move.l  #100000,d0      * cycle limit, set high enough
+    * bytes to get
+    move.l  #SAMPLES_PER_HALF_FRAME,d1
+    movem.l a2/a3,-(sp)
+    jsr     sid_clock_fast
+    movem.l (sp)+,a2/a3
+    * d0 = bytes received, make words
+    lsr     #1,d0
+    rts
+
+dmawait
+	movem.l d0/d1,-(sp)
+	moveq	#12-1,d1
+.d	move.b	$dff006,d0
+.k	cmp.b	$dff006,d0
+	beq.b	.k
+	dbf	d1,.d
+	movem.l (sp)+,d0/d1
+	rts
+
+
+    section bss1,bss
+
+workerTaskStack     ds.b    4096
+workerTaskStruct    ds.b    TC_SIZE
+    ;0  = not running
+    ;1  = running
+    ;-1 = exiting
+workerStatus        ds.b    1
+
+
+    section bss2,bss_c
+
+; Use double space for testing
+buffer1  
+    ds.b	SAMPLES_PER_HALF_FRAME
+    ds.b	SAMPLES_PER_HALF_FRAME
+buffer2
+    ds.b	SAMPLES_PER_HALF_FRAME
+    ds.b	SAMPLES_PER_HALF_FRAME

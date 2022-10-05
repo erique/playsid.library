@@ -18,7 +18,8 @@ clean:
 	rm $(TARGET) $(LISTFILE)
 
 $(TARGET) : $(SOURCE) $(INCLUDES) Makefile
-	$(VASM) $< -o $@ -L $(LISTFILE) $(VASM_FLAGS)
+	$(VASM) $< -o $@ -L $(LISTFILE) $(VASM_FLAGS) -I../resid-68k
+	cp $@ ../HippoPlayer/
 
 main: main.s
 	$(VASM) $< -o $@ $(VASM_FLAGS)
