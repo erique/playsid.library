@@ -6,9 +6,11 @@
 *									*
 *=======================================================================*
 
+ENABLE_REGDUMP  = 0
 * Constants
 PAL_CLOCK=3546895
-SAMPLING_FREQ=44100/2
+;SAMPLING_FREQ=44100/2
+SAMPLING_FREQ=27928 * Maps to period 127, A-3
 PAULA_PERIOD=(PAL_CLOCK+SAMPLING_FREQ/2)/SAMPLING_FREQ
 SAMPLES_PER_FRAME set (SAMPLING_FREQ+25)/50
 SAMPLES_PER_HALF_FRAME set (SAMPLING_FREQ+50)/100
@@ -16,6 +18,10 @@ SAMPLES_PER_HALF_FRAME set (SAMPLING_FREQ+50)/100
  ifne SAMPLES_PER_HALF_FRAME&1
 SAMPLES_PER_HALF_FRAME set SAMPLES_PER_HALF_FRAME+1
  endif
+ 
+; p=c/f
+; pf=c
+; f=c/p
  
 *=======================================================================*
 *	INCLUDES							*
@@ -37,6 +43,7 @@ SAMPLES_PER_HALF_FRAME set SAMPLES_PER_HALF_FRAME+1
 		include	hardware/intbits.i
         include dos/dos_lib.i
 		include	playsid_libdefs.i
+    	include	dos/dosextens.i
 	LIST
 *=======================================================================*
 *	EXTERNAL REFERENCES						*
@@ -243,7 +250,11 @@ AutoInitFunction
 		move.w	#PM_STOP,psb_PlayMode(a6)
 		move.w	#1,psb_EmulResourceFlag(a6)
 		moveq	#0,d0
-.Exit		movem.l	(a7)+,d2-d7/a2-a6
+.Exit		
+ ifne ENABLE_REGDUMP
+        clr.l   regDumpOffset
+ endif
+        movem.l	(a7)+,d2-d7/a2-a6
 		;CALLEXEC Permit
 		rts
 
@@ -256,7 +267,11 @@ AutoInitFunction
 		bsr	@StopSong
 		bsr	FreeEmulMem
 		clr.w	psb_EmulResourceFlag(a6)
-.Exit		movem.l	(a7)+,d2-d7/a2-a6
+.Exit		
+  if ENABLE_REGDUMP
+        jsr     saveDump
+  endif
+        movem.l	(a7)+,d2-d7/a2-a6
 		;CALLEXEC Permit
 		rts
 
@@ -586,6 +601,9 @@ Play64:
 		;bsr	ReadDisplayData
 		;bsr	DisplayRequest
 		bsr	CheckC64TimerA
+  ifne ENABLE_REGDUMP
+        addq.w  #1,regDumpTime
+  endif
 		rts
 
 *-----------------------------------------------------------------------*
@@ -946,13 +964,24 @@ InitSID		movem.l	a2-a3,-(a7)
     movem.l d0-a6,-(sp)
     lea     Sid,a0
     jsr     sid_constructor
+
     move.l  #985248,d0
     moveq   #SAMPLING_METHOD_SAMPLE_FAST,d1
     move.l  #SAMPLING_FREQ,d2
     lea     Sid,a0
     jsr     sid_set_sampling_parameters
+
 	lea     Sid,a0
     jsr     sid_reset
+
+    moveq   #1,d0
+	lea     Sid,a0
+    ;jsr     sid_enable_filter
+
+    moveq   #0,d0
+	lea     Sid,a0
+    ;jsr     sid_enable_external_filter
+
     movem.l (sp)+,d0-a6
   
   
@@ -3866,7 +3895,7 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 .D413
 	move.w	#$D413,d7
 	move.b	d6,0(a0,d7.l)
-    bsr     writeSIDRegister
+    bsr.b    writeSIDRegister
 ;	move.l	a6,d7
 ;	move.l	_PlaySidBase,a6
 ;	move.l	psb_Enve3(a6),a2
@@ -3882,7 +3911,7 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 .D414
 	move.w	#$D414,d7
 	move.b	d6,0(a0,d7.l)
-    bsr     writeSIDRegister
+    bsr.b    writeSIDRegister
 ;	move.b	d6,0(a0,d7.l)
 ;	move.l	a6,d7
 ;	move.l	_PlaySidBase,a6
@@ -3899,22 +3928,22 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 .D415
 	move.w	#$D415,d7
 	move.b	d6,0(a0,d7.l)
-    bsr     writeSIDRegister
+    bsr.b    writeSIDRegister
 	Next_Inst
 .D416
 	move.w	#$D416,d7
 	move.b	d6,0(a0,d7.l)
-    bsr     writeSIDRegister
+    bsr.b   writeSIDRegister
 	Next_Inst
 .D417
 	move.w	#$D417,d7
 	move.b	d6,0(a0,d7.l)
-    bsr     writeSIDRegister
+    bsr.b   writeSIDRegister
 	Next_Inst
 .D418
 	move.w	#$D418,d7
 	move.b	d6,0(a0,d7.l)
-    bsr     writeSIDRegister
+    bsr.b   writeSIDRegister
 ;	move.l	a6,d7
 ;	move.l	_PlaySidBase,a6
 ;	move.l	psb_Chan4(a6),a2
@@ -3933,6 +3962,19 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 *    d7 = address
 writeSIDRegister:
     movem.l d0-d2/a0/a1,-(sp)
+
+  ifne ENABLE_REGDUMP
+    move.l  regDumpOffset,d0
+    cmp.l   #10000,d0
+    bhs.b   .1
+    addq.l  #1,regDumpOffset
+    lea     regDump,a0
+    move.w  regDumpTime,(a0,d0.l*4)
+    move.b  d7,2(a0,d0.l*4)
+    move.b  d6,3(a0,d0.l*4)
+.1
+  endif
+
     move.b  d6,d0
     move.b  d7,d1
     lea     Sid,a0
@@ -4021,7 +4063,7 @@ OpenIRQ
 		move.w	#1,psb_TimerBFlag(a6)
 
 .3		
-        jsr createWorkerTask
+        jsr createReSIDWorkerTask
         bsr	PlayDisable
 		moveq	#0,d0
 		rts
@@ -4072,7 +4114,7 @@ CloseIRQ	tst.w	psb_TimerBFlag(a6)
 		;move.l	(a7)+,a6
 		move.w	#0,psb_IntVecAudFlag(a6)
 .3
-        jsr     stopWorkerTask
+        jsr     stopReSIDWorkerTask
 		rts
 
 *-----------------------------------------------------------------------*
@@ -7123,13 +7165,27 @@ _CiabBase	ds.l	1
 _PlaySidBase	ds.l	1
 
 *-----------------------------------------------------------------------*
+
+
 		include	external.asm
 
+*-----------------------------------------------------------------------*
+*
+* reSID-68k 
+*
+*-----------------------------------------------------------------------*
+
+        section    reSID1,code
+
+  ifd __VASM
+    ; Optimize stuff below
+    opt o+
+  endif
         include resid-68k.s
 
-        section    bob,code
+        section    reSID2,code
 
-createWorkerTask:
+createReSIDWorkerTask:
   
     movem.l d0-a6,-(sp)
     tst.b   workerStatus
@@ -7137,7 +7193,8 @@ createWorkerTask:
 
     lea     workerTaskStruct,a0
     move.b  #NT_TASK,LN_TYPE(a0)
-    move.b  #-50,LN_PRI(a0)
+    ; Task priority: 0
+    move.b  #0,LN_PRI(a0)
     move.l  #.workerTaskName,LN_NAME(a0)
     lea     workerTaskStack,a1
     move.l  a1,TC_SPLOWER(a0)
@@ -7146,19 +7203,20 @@ createWorkerTask:
     move.l  a1,TC_SPREG(a0)
 
     move.l  a0,a1
-    lea     workerEntry(pc),a2
+    lea     reSIDWorkerEntryPoint(pc),a2
     sub.l   a3,a3
     move.l  4.w,a6
     jsr     _LVOAddTask(a6)
+    addq.b  #1,workerStatus
 .x
     movem.l (sp)+,d0-a6
     rts
 
 .workerTaskName
-    dc.b    "Wrkr",0
+    dc.b    "reSID",0
     even
 
-stopWorkerTask
+stopReSIDWorkerTask:
     
     movem.l d0-a6,-(sp)
     tst.b   workerStatus
@@ -7166,7 +7224,13 @@ stopWorkerTask
     move.b  #-1,workerStatus
 
     move.l  4.w,a6
-    lea     .DOSName(pc),a1
+    move.l  reSIDTask(pc),a1
+    moveq   #0,d0
+    move.b  reSIDExitSignal(pc),d1
+    bset    d1,d0
+    jsr     _LVOSignal(a6)
+
+    lea     _DOSName(pc),a1
     jsr     _LVOOldOpenLibrary(a6)
     move.l  d0,a6
 .loop
@@ -7183,29 +7247,53 @@ stopWorkerTask
     movem.l (sp)+,d0-a6
     rts
 
-.DOSName
+_DOSName
     dc.b    "dos.library",0
     even
 
+* Playback task
+reSIDWorkerEntryPoint
+    addq.b  #1,workerStatus
 
-workerEntry
-    move.b  #1,workerStatus
+    move.l  4.w,a6
+    sub.l   a1,a1
+    jsr     _LVOFindTask(a6)
+    move.l  d0,reSIDTask
+    
+    moveq   #-1,d0
+    jsr     _LVOAllocSignal(a6)
+    move.b  d0,reSIDAudioSignal
+    moveq   #-1,d0
+    jsr     _LVOAllocSignal(a6)
+    move.b  d0,reSIDExitSignal
 
-    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
-    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
-    move.w  #DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
+    lea     reSIDLevel4Intr1,a1
+    moveq   #INTB_AUD0,d0		; Allocate Level 4
+    jsr     _LVOSetIntVector(a6)
+    move.l  d0,.oldVecAud0
+
+    move.w  #INTF_AUD0,intena+$dff000
+    move.w  #INTF_AUD0,intreq+$dff000
+    move.w  #DMAF_AUD0!DMAF_AUD1,dmacon+$dff000
+
     move    #PAULA_PERIOD,$a6+$dff000
+    move    #PAULA_PERIOD,$b6+$dff000
+    ; TODO: hook up vol control
     move    #64,$a8+$dff000
+    move    #64,$b8+$dff000
 
     lea     buffer1,a2
     lea     buffer2,a3
     move.l  a2,$a0+$dff000 
+    move.l  a2,$b0+$dff000 
 
     bsr     fillBufferA2
     move    d0,$a4+$dff000   * words
+    move    d0,$b4+$dff000   * words
 
     bsr     dmawait
-    move    #DMAF_SETCLR!DMAF_AUD0,dmacon+$dff000
+    move    #DMAF_SETCLR!DMAF_AUD0!DMAF_AUD1,dmacon+$dff000
+    move.w  #INTF_SETCLR!INTF_AUD0,intena+$dff000
 
     ; buffer A now plays
     ; interrupt will be triggered soon to queue the next sample
@@ -7216,10 +7304,18 @@ workerEntry
     ; queue buffer A
     ; fill A
     ; ... etc
+
+    move.l  4.w,a6
 .loop
-    move.w  intreqr+$dff000,d0
-    btst    #INTB_AUD0,d0
-    beq.b   .1
+    moveq   #0,d0
+    move.b  reSIDAudioSignal(pc),d1
+    bset    d1,d0
+    move.b  reSIDExitSignal(pc),d1
+    bset    d1,d0
+    jsr     _LVOWait(a6)
+
+    tst.b   workerStatus
+    bmi.b   .x
 
     move    .bob,$dff180
     not	    .bob
@@ -7227,18 +7323,40 @@ workerEntry
     * Switch buffers and fill
     exg     a2,a3
     move.l  a2,$a0+$dff000 
+    move.l  a2,$b0+$dff000 
     bsr     fillBufferA2
     move    d0,$a4+$dff000   * words
-    
+    move    d0,$b4+$dff000   * words
+
+    bra     .loop
+.x
+
+    move.w  #INTF_AUD0,intena+$dff000
     move.w  #INTF_AUD0,intreq+$dff000
-.1
-    tst.b   workerStatus
-    bpl     .loop
+    moveq	#INTB_AUD0,d0
+    move.l  .oldVecAud0(pc),a1
+    move.l  4.w,a6
+    jsr     _LVOSetIntVector(a6)
+    move.l  d0,.oldVecAud0
+    
+    move.b   reSIDAudioSignal(pc),d0
+    jsr     _LVOFreeSignal(a6)
+    move.b   reSIDExitSignal(pc),d0
+    jsr     _LVOFreeSignal(a6)
+
+    jsr     _LVOForbid(a6)
     clr.b   workerStatus
     rts
 
+.oldVecAud0     dc.l    0
+
 .bob dc.w   $f0f
 
+    ;0  = not running
+    ;1  = running
+    ;-1 = exiting
+workerStatus        dc.b    0
+    even
 
 fillBufferA2:
     lea     Sid,a0
@@ -7263,23 +7381,100 @@ dmawait
 	movem.l (sp)+,d0/d1
 	rts
 
+reSIDLevel4Intr1	
+        dc.l	0		; Audio Interrupt
+		dc.l	0
+		dc.b	2
+		dc.b	0
+		dc.l	reSIDLevel4Name1
+reSIDLevel4Intr1Data:
+reSIDTask:	
+    dc.l	0		            ;is_Data
+	dc.l	reSIDLevel4Handler1	;is_Code
+
+reSIDLevel4Name1
+    dc.b    "reSID Audio",0
+    even
+
+* a1 = is_data = task
+* a6 = execbase
+reSIDLevel4Handler1
+    move.w  #INTF_AUD0,intreq(a0)
+    move.b  reSIDAudioSignal(pc),d1
+    moveq   #0,d0
+    bset    d1,d0
+    jmp     _LVOSignal(a6)
+    
+reSIDAudioSignal    dc.b    0
+reSIDExitSignal    dc.b    0
+    even
+
+  ifne ENABLE_REGDUMP
+saveDump
+    lea     .d(pc),a0
+    lea     regDump,a1
+    move.l  regDumpOffset,d0
+    mulu    #4,d0
+    bsr     plainSaveFile
+    rts
+
+.d  dc.b    "sys:psid.bin",0
+    even
+
+* Saves a file
+* in:	
+*  a0 = file path
+*  a1 = data address
+*  d0 = data length
+* out: 
+*  d0 = Written bytes or -1 if error
+plainSaveFile:
+	movem.l	d1-a6,-(sp)
+	movem.l d0/a0/a1,-(sp)
+    move.l  4.w,a6
+    lea     _DOSName(pc),a1
+    jsr     _LVOOldOpenLibrary(a6)
+    move.l  d0,a6
+	movem.l (sp)+,d0/a0/a1
+
+    moveq	#-1,d7
+	move.l	a1,d4
+	move.l 	d0,d5
+    
+	move.l	a0,d1
+	move.l	#MODE_NEWFILE,d2
+	jsr     _LVOOpen(a6)
+	move.l	d0,d6
+	beq.b	.openErr
+
+	move.l	d6,d1	* file
+	move.l	d4,d2	* buffer
+	move.l	d5,d3  	* len
+	jsr     _LVOWrite(a6)
+	move.l  d0,d7 
+
+	move.l	d6,d1 
+	jsr     _LVOClose(a6)
+.openErr 
+	move.l	d7,d0
+	movem.l (sp)+,d0-a6
+	rts
+  endif
 
     section bss1,bss
 
 workerTaskStack     ds.b    4096
 workerTaskStruct    ds.b    TC_SIZE
-    ;0  = not running
-    ;1  = running
-    ;-1 = exiting
-workerStatus        ds.b    1
 
+  ifne ENABLE_REGDUMP
+regDumpTime         ds.w    1
+regDumpOffset       ds.l    1
+regDump
+    * time(w),reg(b),data(b)
+    ds.l    10000
+  endif
 
     section bss2,bss_c
 
-; Use double space for testing
-buffer1  
-    ds.b	SAMPLES_PER_HALF_FRAME
-    ds.b	SAMPLES_PER_HALF_FRAME
-buffer2
-    ds.b	SAMPLES_PER_HALF_FRAME
-    ds.b	SAMPLES_PER_HALF_FRAME
+buffer1     ds.b    SAMPLES_PER_HALF_FRAME
+buffer2     ds.b    SAMPLES_PER_HALF_FRAME
