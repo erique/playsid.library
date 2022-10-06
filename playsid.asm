@@ -7,6 +7,7 @@
 *=======================================================================*
 
 ENABLE_REGDUMP  = 0
+ENABLE_14BIT    = 1
 * Constants
 PAL_CLOCK=3546895
 ;SAMPLING_FREQ=44100/2
@@ -7272,27 +7273,52 @@ reSIDWorkerEntryPoint
     jsr     _LVOSetIntVector(a6)
     move.l  d0,.oldVecAud0
 
-    move.w  #INTF_AUD0,intena+$dff000
-    move.w  #INTF_AUD0,intreq+$dff000
-    move.w  #DMAF_AUD0!DMAF_AUD1,dmacon+$dff000
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
+ move.w  #DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
 
+    * CH0 = high 8 bits - full volume
+    * CH3 = low 6 bits  - volume 1
+    * CH1 = high 8 bits - full volume
+    * CH2 = low 6 bits  - volume 1
     move    #PAULA_PERIOD,$a6+$dff000
     move    #PAULA_PERIOD,$b6+$dff000
+    move    #PAULA_PERIOD,$c6+$dff000
+    move    #PAULA_PERIOD,$d6+$dff000
     ; TODO: hook up vol control
-    move    #64,$a8+$dff000
-    move    #64,$b8+$dff000
 
-    lea     buffer1,a2
-    lea     buffer2,a3
-    move.l  a2,$a0+$dff000 
-    move.l  a2,$b0+$dff000 
+  ifne ENABLE_14BIT
+    move    #64,$a8+$dff000
+    move    #1,$d8+$dff000
+    move    #64,$b8+$dff000
+    move    #1,$c8+$dff000
+  else
+    move    #64,$a8+$dff000
+    move    #0,$d8+$dff000
+    move    #64,$b8+$dff000
+    move    #0,$c8+$dff000   
+  endif
+
+    movem.l buffer1p(pc),d0/d1
+    move.l  d0,$a0+$dff000 
+    move.l  d1,$d0+$dff000 
+    move.l  d0,$b0+$dff000 
+    move.l  d1,$c0+$dff000 
 
     bsr     fillBufferA2
     move    d0,$a4+$dff000   * words
+    move    d0,$d4+$dff000   * words
     move    d0,$b4+$dff000   * words
-
+    move    d0,$c4+$dff000   * words
+    
     bsr     dmawait
+    
+  ifne ENABLE_14BIT
+    move    #DMAF_SETCLR!DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
+  else
     move    #DMAF_SETCLR!DMAF_AUD0!DMAF_AUD1,dmacon+$dff000
+  endif
+   
     move.w  #INTF_SETCLR!INTF_AUD0,intena+$dff000
 
     ; buffer A now plays
@@ -7317,22 +7343,29 @@ reSIDWorkerEntryPoint
     tst.b   workerStatus
     bmi.b   .x
 
-    move    .bob,$dff180
-    not	    .bob
+    ;move    .bob,$dff180
+    ;not	    .bob
 
     * Switch buffers and fill
-    exg     a2,a3
-    move.l  a2,$a0+$dff000 
-    move.l  a2,$b0+$dff000 
+    bsr     switchBuffers
+    movem.l buffer1p(pc),d0/d1
+    move.l  d0,$a0+$dff000 
+    move.l  d1,$d0+$dff000 
+    move.l  d0,$b0+$dff000 
+    move.l  d1,$c0+$dff000 
+
     bsr     fillBufferA2
     move    d0,$a4+$dff000   * words
+    move    d0,$d4+$dff000   * words
     move    d0,$b4+$dff000   * words
+    move    d0,$c4+$dff000   * words
 
     bra     .loop
 .x
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD0!INTF_AUD2!INTF_AUD3,intena+$dff000
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD0!INTF_AUD2!INTF_AUD3,intreq+$dff000
+    move    #$f,dmacon+$dff000
 
-    move.w  #INTF_AUD0,intena+$dff000
-    move.w  #INTF_AUD0,intreq+$dff000
     moveq	#INTB_AUD0,d0
     move.l  .oldVecAud0(pc),a1
     move.l  4.w,a6
@@ -7358,19 +7391,46 @@ reSIDWorkerEntryPoint
 workerStatus        dc.b    0
     even
 
+switchBuffers:
+    movem.l buffer1p(pc),d0/d1
+    movem.l buffer2p(pc),d2/d3
+    movem.l d0/d1,buffer2p
+    movem.l d2/d3,buffer1p
+    rts
+
+buffer1p    dc.l    buffer1
+            dc.l    buffer1b
+buffer2p    dc.l    buffer2
+            dc.l    buffer2b
+
+  ifne ENABLE_14BIT
+
 fillBufferA2:
     lea     Sid,a0
-    move.l  a2,a1           * target buffer
+    movem.l buffer1p(pc),a1/a2
     move.l  #100000,d0      * cycle limit, set high enough
     * bytes to get
     move.l  #SAMPLES_PER_HALF_FRAME,d1
-    movem.l a2/a3,-(sp)
-    jsr     sid_clock_fast
-    movem.l (sp)+,a2/a3
+    jsr     sid_clock_fast16
     * d0 = bytes received, make words
     lsr     #1,d0
     rts
 
+  else
+
+fillBufferA2:
+    lea     Sid,a0
+    move.l  buffer1p(pc),a1
+    move.l  #100000,d0      * cycle limit, set high enough
+    * bytes to get
+    move.l  #SAMPLES_PER_HALF_FRAME,d1
+    jsr     sid_clock_fast
+    * d0 = bytes received, make words
+    lsr     #1,d0
+    rts
+
+  endif
+  
 dmawait
 	movem.l d0/d1,-(sp)
 	moveq	#12-1,d1
@@ -7478,3 +7538,5 @@ regDump
 
 buffer1     ds.b    SAMPLES_PER_HALF_FRAME
 buffer2     ds.b    SAMPLES_PER_HALF_FRAME
+buffer1b    ds.b    SAMPLES_PER_HALF_FRAME
+buffer2b    ds.b    SAMPLES_PER_HALF_FRAME
