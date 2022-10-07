@@ -8,9 +8,10 @@
 
 ENABLE_REGDUMP  = 0
 ENABLE_14BIT    = 1
+ENABLE_LEV4PLAY = 1
+
 * Constants
 PAL_CLOCK=3546895
-;SAMPLING_FREQ=44100/2
 SAMPLING_FREQ=27928 * Maps to period 127, A-3
 PAULA_PERIOD=(PAL_CLOCK+SAMPLING_FREQ/2)/SAMPLING_FREQ
 SAMPLES_PER_FRAME set (SAMPLING_FREQ+25)/50
@@ -977,11 +978,11 @@ InitSID		movem.l	a2-a3,-(a7)
 
     moveq   #1,d0
 	lea     Sid,a0
-    ;jsr     sid_enable_filter
+    jsr     sid_enable_filter
 
-    moveq   #0,d0
+    moveq   #1,d0
 	lea     Sid,a0
-    ;jsr     sid_enable_external_filter
+    jsr     sid_enable_external_filter
 
     movem.l (sp)+,d0-a6
   
@@ -7261,6 +7262,10 @@ reSIDWorkerEntryPoint
     jsr     _LVOFindTask(a6)
     move.l  d0,reSIDTask
     
+ ifne ENABLE_LEV4PLAY 
+    move.l  #reSIDLevel1Intr,reSIDLevel4Intr1Data
+ endif
+
     moveq   #-1,d0
     jsr     _LVOAllocSignal(a6)
     move.b  d0,reSIDAudioSignal
@@ -7275,7 +7280,7 @@ reSIDWorkerEntryPoint
 
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
- move.w  #DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
+    move.w  #DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
 
     * CH0 = high 8 bits - full volume
     * CH3 = low 6 bits  - volume 1
@@ -7305,11 +7310,7 @@ reSIDWorkerEntryPoint
     move.l  d0,$b0+$dff000 
     move.l  d1,$c0+$dff000 
 
-    bsr     fillBufferA2
-    move    d0,$a4+$dff000   * words
-    move    d0,$d4+$dff000   * words
-    move    d0,$b4+$dff000   * words
-    move    d0,$c4+$dff000   * words
+    bsr     fillBuffer
     
     bsr     dmawait
     
@@ -7346,19 +7347,9 @@ reSIDWorkerEntryPoint
     ;move    .bob,$dff180
     ;not	    .bob
 
-    * Switch buffers and fill
-    bsr     switchBuffers
-    movem.l buffer1p(pc),d0/d1
-    move.l  d0,$a0+$dff000 
-    move.l  d1,$d0+$dff000 
-    move.l  d0,$b0+$dff000 
-    move.l  d1,$c0+$dff000 
-
-    bsr     fillBufferA2
-    move    d0,$a4+$dff000   * words
-    move    d0,$d4+$dff000   * words
-    move    d0,$b4+$dff000   * words
-    move    d0,$c4+$dff000   * words
+  ifeq ENABLE_LEV4PLAY
+    bsr     switchAndFillBuffer
+  endif
 
     bra     .loop
 .x
@@ -7391,6 +7382,11 @@ reSIDWorkerEntryPoint
 workerStatus        dc.b    0
     even
 
+buffer1p    dc.l    buffer1
+            dc.l    buffer1b
+buffer2p    dc.l    buffer2
+            dc.l    buffer2b
+
 switchBuffers:
     movem.l buffer1p(pc),d0/d1
     movem.l buffer2p(pc),d2/d3
@@ -7398,35 +7394,51 @@ switchBuffers:
     movem.l d2/d3,buffer1p
     rts
 
-buffer1p    dc.l    buffer1
-            dc.l    buffer1b
-buffer2p    dc.l    buffer2
-            dc.l    buffer2b
-
+ switchAndFillBuffer:
+   * Switch buffers and fill
+    bsr     switchBuffers
+    movem.l buffer1p(pc),d0/d1
+    move.l  d0,$a0+$dff000 
+    move.l  d1,$d0+$dff000 
+    move.l  d0,$b0+$dff000 
+    move.l  d1,$c0+$dff000 
+    ;bra     fillBuffer
+ 
   ifne ENABLE_14BIT
 
-fillBufferA2:
+fillBuffer:
     lea     Sid,a0
     movem.l buffer1p(pc),a1/a2
     move.l  #100000,d0      * cycle limit, set high enough
     * bytes to get
     move.l  #SAMPLES_PER_HALF_FRAME,d1
-    jsr     sid_clock_fast16
+    jsr     sid_clock_fast14
     * d0 = bytes received, make words
     lsr     #1,d0
+
+    move    d0,$a4+$dff000   * words
+    move    d0,$d4+$dff000   * words
+    move    d0,$b4+$dff000   * words
+    move    d0,$c4+$dff000   * words
     rts
 
   else
 
-fillBufferA2:
+fillBuffer:
     lea     Sid,a0
     move.l  buffer1p(pc),a1
     move.l  #100000,d0      * cycle limit, set high enough
     * bytes to get
     move.l  #SAMPLES_PER_HALF_FRAME,d1
-    jsr     sid_clock_fast
+    jsr     sid_clock_fast8
     * d0 = bytes received, make words
+    move    #SAMPLES_PER_HALF_FRAME,d0
     lsr     #1,d0
+
+    move    d0,$a4+$dff000   * words
+    move    d0,$d4+$dff000   * words
+    move    d0,$b4+$dff000   * words
+    move    d0,$c4+$dff000   * words
     rts
 
   endif
@@ -7443,28 +7455,54 @@ dmawait
 
 reSIDLevel4Intr1	
         dc.l	0		; Audio Interrupt
-		dc.l	0
-		dc.b	2
-		dc.b	0
-		dc.l	reSIDLevel4Name1
+        dc.l	0
+        dc.b	2
+        dc.b	0
+        dc.l	reSIDLevel4Name1
 reSIDLevel4Intr1Data:
 reSIDTask:	
-    dc.l	0		            ;is_Data
-	dc.l	reSIDLevel4Handler1	;is_Code
+        dc.l	0		            ;is_Data
+        dc.l	reSIDLevel4Handler1	;is_Code
 
 reSIDLevel4Name1
     dc.b    "reSID Audio",0
     even
 
-* a1 = is_data = task
+reSIDLevel1Intr
+      	dc.l	0
+        dc.l	0
+        dc.b	2
+        dc.b	0
+        dc.l    reSIDLevel4Name1    
+        dc.l	0
+        dc.l	reSIDLevel1Handler
+
+
+* a1 = is_data 
 * a6 = execbase
 reSIDLevel4Handler1
     move.w  #INTF_AUD0,intreq(a0)
+ ifeq ENABLE_LEV4PLAY
+    * a1 = task
     move.b  reSIDAudioSignal(pc),d1
     moveq   #0,d0
     bset    d1,d0
     jmp     _LVOSignal(a6)
-    
+ else
+    * a1 = int struct
+    jmp     _LVOCause(a6)
+ endif
+
+reSIDLevel1Handler:
+    movem.l d2-d7/a2-a4,-(sp)
+    move    .bob,$dff180
+    not	    .bob
+    bsr     switchAndFillBuffer
+    movem.l (sp)+,d2-d7/a2-a4
+    moveq   #0,d0
+    rts
+.bob dc.w   $f0f
+
 reSIDAudioSignal    dc.b    0
 reSIDExitSignal    dc.b    0
     even
