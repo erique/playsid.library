@@ -1,0 +1,3 @@
+[submodule "resid-68k"]
+	path = resid-68k
+	url = https://github.com/koobo/resid-68k
