@@ -7265,7 +7265,7 @@ reSIDWorkerEntryPoint
  ifne ENABLE_LEV4PLAY 
     move.l  #reSIDLevel1Intr,reSIDLevel4Intr1Data
  else
-    move.l  d0,,reSIDLevel4Intr1Data
+    move.l  d0,reSIDLevel4Intr1Data
  endif
 
     moveq   #-1,d0
@@ -7346,8 +7346,8 @@ reSIDWorkerEntryPoint
     tst.b   workerStatus
     bmi.b   .x
 
-    ;move    .bob,$dff180
-    ;not	    .bob
+;    move    .bob1,$dff180
+;    not	    .bob1
 
   ifeq ENABLE_LEV4PLAY
     push    a6
@@ -7378,7 +7378,7 @@ reSIDWorkerEntryPoint
 
 .oldVecAud0     dc.l    0
 
-.bob dc.w   $f0f
+.bob1 dc.w   $ff0
 
     ;0  = not running
     ;1  = running
@@ -7510,14 +7510,14 @@ reSIDLevel4Handler1
 
 reSIDLevel1Handler:
    	movem.l d2-d7/a2-a4/a6,-(sp)
-    ;move    .bob,$dff180
-    ;not	    .bob
+   ; move    .bob2,$dff180
+   ; not	    .bob2
     bsr     switchAndFillBuffer
    	movem.l (sp)+,d2-d7/a2-a4/a6
     moveq   #0,d0
     rts
 
-.bob dc.w   $f0f
+.bob2 dc.w   $f0f
 
 reSIDAudioSignal    dc.b    0
 reSIDExitSignal    dc.b    0
