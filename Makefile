@@ -2,20 +2,23 @@ INCLUDE = -I$(HOME)/A/Asm/Include
 INCLUDE ?= -I $(VBCC)/m68k-amigaos/ndk-include/
 VBCC ?= /opt/amiga
 VASM ?= $(VBCC)/bin/vasmm68k_mot
-VASM_FLAGS := -Fhunkexe -kick1hunks -quiet -m68030 -m68881 -nosym -showcrit -no-opt $(INCLUDE)
+VASM_FLAGS := -Fhunkexe -kick1hunks -quiet -m68030 -m68881 -nosym -no-opt $(INCLUDE)
 
 SOURCE   = playsid.asm 
 INCLUDES := playsid_libdefs.i 
 
 TARGET   := playsid.library
-LISTFILE := playsid.txt
+TARGET14 := playsid.library-14bit
 
 .PHONY: all clean
 
-all: $(TARGET)
+all: $(TARGET) $(TARGET14)
 
 clean:
-	rm $(TARGET) $(LISTFILE)
+	rm $(TARGET) $(TARGET14)
 
-$(TARGET) : $(SOURCE) $(INCLUDES) Makefile resid-68k/resid-68k.s
-	$(VASM) $< -o $@ -L $(LISTFILE) $(VASM_FLAGS) -Iresid-68k
+$(TARGET) : $(SOURCE) $(INCLUDES) Makefile
+	$(VASM) $< -o $@ $(VASM_FLAGS) -Iresid-68k
+
+$(TARGET14) : $(SOURCE) $(INCLUDES) Makefile ../resid-68k/resid-68k.s
+	$(VASM) $< -o $@ $(VASM_FLAGS) -Iresid-68k -DENABLE_14BIT=1

@@ -6,8 +6,21 @@
 *									*
 *=======================================================================*
 
-ENABLE_REGDUMP  = 0
+; Set to 1 to enable the Paula 14-bit output
+  ifnd ENABLE_14BIT
 ENABLE_14BIT    = 0
+  endif
+
+; Set to 1 to save SID register dump into a file
+ENABLE_REGDUMP  = 0
+
+; Set to 1 to do playback in interrupts.
+; This makes the audio smooth and uninterruptible,
+; but may hang the whole system if CPU runs low.
+; Set to 0 to do playback in a task.
+; This will not hang the system but music playback
+; will easily be disturbed by other things happening 
+; in the system.
 ENABLE_LEV4PLAY = 1
 
 * Constants
