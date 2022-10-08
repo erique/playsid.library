@@ -7,7 +7,7 @@
 *=======================================================================*
 
 ENABLE_REGDUMP  = 0
-ENABLE_14BIT    = 1
+ENABLE_14BIT    = 0
 ENABLE_LEV4PLAY = 1
 
 * Constants
@@ -7264,6 +7264,8 @@ reSIDWorkerEntryPoint
     
  ifne ENABLE_LEV4PLAY 
     move.l  #reSIDLevel1Intr,reSIDLevel4Intr1Data
+ else
+    move.l  d0,,reSIDLevel4Intr1Data
  endif
 
     moveq   #-1,d0
@@ -7348,14 +7350,16 @@ reSIDWorkerEntryPoint
     ;not	    .bob
 
   ifeq ENABLE_LEV4PLAY
+    push    a6
     bsr     switchAndFillBuffer
+    pop     a6
   endif
-
     bra     .loop
 .x
-    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD0!INTF_AUD2!INTF_AUD3,intena+$dff000
-    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD0!INTF_AUD2!INTF_AUD3,intreq+$dff000
+
     move    #$f,dmacon+$dff000
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
 
     moveq	#INTB_AUD0,d0
     move.l  .oldVecAud0(pc),a1
@@ -7453,6 +7457,8 @@ dmawait
 	movem.l (sp)+,d0/d1
 	rts
 
+reSIDTask:   dc.l    0
+
 reSIDLevel4Intr1	
         dc.l	0		; Audio Interrupt
         dc.l	0
@@ -7460,7 +7466,6 @@ reSIDLevel4Intr1
         dc.b	0
         dc.l	reSIDLevel4Name1
 reSIDLevel4Intr1Data:
-reSIDTask:	
         dc.l	0		            ;is_Data
         dc.l	reSIDLevel4Handler1	;is_Code
 
@@ -7493,14 +7498,25 @@ reSIDLevel4Handler1
     jmp     _LVOCause(a6)
  endif
 
+;  D0 - scratch
+;  D1 - scratch (on entry: active
+;       interrupts -> equals INTENA & INTREQ)
+;  A0 - scratch (on entry: pointer to base of custom chips
+;       for fast indexing)
+;  A1 - scratch (on entry: Interrupt's IS_DATA pointer)
+;  A5 - jump vector register (scratch on call)
+;  A6 - Exec library base pointer (scratch on call)
+;       all other registers must be preserve
+
 reSIDLevel1Handler:
-    movem.l d2-d7/a2-a4,-(sp)
-    move    .bob,$dff180
-    not	    .bob
+   	movem.l d2-d7/a2-a4/a6,-(sp)
+    ;move    .bob,$dff180
+    ;not	    .bob
     bsr     switchAndFillBuffer
-    movem.l (sp)+,d2-d7/a2-a4
+   	movem.l (sp)+,d2-d7/a2-a4/a6
     moveq   #0,d0
     rts
+
 .bob dc.w   $f0f
 
 reSIDAudioSignal    dc.b    0
