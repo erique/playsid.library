@@ -7449,7 +7449,6 @@ fillBuffer:
     move.l  #SAMPLES_PER_HALF_FRAME,d1
     jsr     sid_clock_fast8
     * d0 = bytes received, make words
-    move    #SAMPLES_PER_HALF_FRAME,d0
     lsr     #1,d0
 
     move    d0,$a4+$dff000   * words
