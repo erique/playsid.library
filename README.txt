@@ -23,14 +23,20 @@ Applications using "playsid.library" will automatically be enhanced.
 These are at least HippoPlayer and DeliTracker.
 
 Please note that reSID is very heavy on the CPU. I measured
-CPU usage of 60-90% on my A1200/060, depending on the tune.
+CPU usage of 50-80% on my A1200/060, depending on the tune.
 Your system may become unresponsive if it's not powerful enough.
-An FPU is not required! A 68040 will probably not be fast enough.
+An FPU is not required. A 68040 will probably not be fast enough.
 
-Also note that samples will not be heard. This is because the
+Note 1: Samples will not be heard. This is because the
 samples have typically had some special handling in
 SID players and emulators. The playsid.library sample handling 
 is not used with reSID.
+
+Note 2: Sometimes the sound output may be noisy. This is
+sampling noise, result of the reSID "fast" method.
+Unfortunately the better quality sampling options available 
+in reSID are too slow for the 060.
+
 
 /K-P
 
