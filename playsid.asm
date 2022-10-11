@@ -134,6 +134,12 @@ AutoInitVectors	;***** Standard System Routines *****
 		dc.l	@SetDisplaySignal
 		dc.l	@SetDisplayEnable
 
+		;****** reSID support ******
+        dc.l    @SetRESIDVolume
+        dc.l    @SetRESIDChipModel
+        dc.l    @SetRESIDFilter
+        dc.l    @GetRESIDAudioBuffer
+
 		dc.l	-1
 
 AutoInitStructure
@@ -7192,6 +7198,37 @@ _PlaySidBase	ds.l	1
 
         section    reSID1,code
 
+@SetRESIDVolume 
+    lea     Sid,a0
+    move    d0,sid_volume(a0)
+    rts
+
+* In:
+*   d0 = 0 for 6581, 1 for 8581
+@SetRESIDChipModel
+    lea     Sid,a0
+    moveq   #CHIP_MODEL_MOS6581,d0
+    tst.b   d0
+    beq     sid_set_chip_model
+    moveq   #CHIP_MODEL_MOS8580,d0
+    bra     sid_set_chip_model
+
+* In:
+*   d0 = 0 or 1
+@SetRESIDFilter
+    lea     Sid,a0
+    bsr     sid_enable_filter
+    rts
+
+* Out:
+*   d0 = length in bytes
+*   a0 = audio data
+@GetRESIDAudioBuffer
+    move.l buffer1p,a0
+    move.w  #SAMPLES_PER_HALF_FRAME,d0
+    move.w  #PAULA_PERIOD,d1
+    rts
+
   ifd __VASM
     ; Optimize stuff below
     opt o+
@@ -7199,6 +7236,7 @@ _PlaySidBase	ds.l	1
         include resid-68k.s
 
         section    reSID2,code
+
 
 createReSIDWorkerTask:
   
