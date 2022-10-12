@@ -17,10 +17,11 @@ ENABLE_REGDUMP  = 0
 ; Set to 1 to do playback in interrupts.
 ; This makes the audio smooth and uninterruptible,
 ; but may hang the whole system if CPU runs low.
+
 ; Set to 0 to do playback in a task.
 ; This will not hang the system but music playback
 ; will easily be disturbed by other things happening 
-; in the system.
+; in the system. Also has debug color!
 ENABLE_LEV4PLAY = 1
 
 * Constants
@@ -7397,11 +7398,12 @@ reSIDWorkerEntryPoint
     tst.b   workerStatus
     bmi.b   .x
 
-;    move    .bob1,$dff180
-;    not	    .bob1
 
   ifeq ENABLE_LEV4PLAY
     push    a6
+    * Debug color
+    move    .bob1,$dff180
+    not	    .bob1
     bsr     switchAndFillBuffer
     pop     a6
   endif
@@ -7560,8 +7562,6 @@ reSIDLevel4Handler1
 
 reSIDLevel1Handler:
    	movem.l d2-d7/a2-a4/a6,-(sp)
-   ; move    .bob2,$dff180
-   ; not	    .bob2
     bsr     switchAndFillBuffer
    	movem.l (sp)+,d2-d7/a2-a4/a6
     moveq   #0,d0

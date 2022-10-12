@@ -2,7 +2,7 @@ INCLUDE = -I$(HOME)/A/Asm/Include
 INCLUDE ?= -I $(VBCC)/m68k-amigaos/ndk-include/
 VBCC ?= /opt/amiga
 VASM ?= $(VBCC)/bin/vasmm68k_mot
-VASM_FLAGS := -Fhunkexe -kick1hunks -quiet -m68030 -m68881 -nosym -no-opt $(INCLUDE)
+VASM_FLAGS := -Fhunkexe -kick1hunks -quiet -m68030 -nosym -no-opt $(INCLUDE)
 
 SOURCE   = playsid.asm 
 INCLUDES := playsid_libdefs.i 
@@ -20,5 +20,5 @@ clean:
 $(TARGET) : $(SOURCE) $(INCLUDES) Makefile
 	$(VASM) $< -o $@ $(VASM_FLAGS) -Iresid-68k
 
-$(TARGET14) : $(SOURCE) $(INCLUDES) Makefile ../resid-68k/resid-68k.s
+$(TARGET14) : $(SOURCE) $(INCLUDES) Makefile 
 	$(VASM) $< -o $@ $(VASM_FLAGS) -Iresid-68k -DENABLE_14BIT=1
