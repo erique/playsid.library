@@ -42,6 +42,11 @@ LIBRARIES_PLAYSID_LIB_I SET	1
 	LIBDEF _LVOSetDisplaySignal
 	LIBDEF _LVOSetDisplayEnable
 
+        LIBDEF _LVOSetRESIDVolume
+        LIBDEF _LVOSetRESIDChipModel
+        LIBDEF _LVOSetRESIDFilter
+        LIBDEF _LVOGetRESIDAudioBuffer
+
 CALLPLAYSID	MACRO
 	move.l	_PlaySidBase,a6
 	jsr	_LVO\1(a6)
