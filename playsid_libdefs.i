@@ -14,18 +14,18 @@ PLAYSID_LIBDEFS_I SET  1
 ;************************************************************************
 
 PSIDLIB_VERSION		equ	1
-PSIDLIB_REVISION	equ	2
+PSIDLIB_REVISION	equ	3
 
 PSIDLIB_NAME	MACRO
 		dc.b	"playsid.library",0
 		ENDM
 
 PSIDLIB_IDSTRING MACRO
-		dc.b	"playsid.library 1.2 (30.03.96)",13,10,0
+		dc.b	"playsid.library 1.3 reSID (October 2022)",13,10,0
 		ENDM
 
 PSIDLIB_COPYRIGHT MACRO
-		dc.b	"© 1996 by Per Håkan Sundell & Ron Birk",0
+		dc.b	"ï¿½ 1996 by Per Hï¿½kan Sundell & Ron Birk",0
 		ENDM
 
 
@@ -174,6 +174,11 @@ FREE		MACRO
 	UWORD	psb_AudioDevice
 	APTR	psb_AudioIO
 	APTR	psb_AudioMP
+    ; New fields:
+    UWORD   psb_Volume
+    APTR    psb_reSID
+    UWORD   psb_OperatingMode
+    APTR    psb_DOSBase
 	LABEL	psb_SIZEOF
 
 ; --- Error --------------------------------------------------------------
@@ -188,6 +193,7 @@ SID_NOLIBRARY	equ	-8
 SID_BADHEADER	equ	-9
 SID_NOSONG	equ	-10
 SID_LIBINUSE	equ	-11
+SID_NOSIDBLASTER  equ -12
 
 ; --- Playing Modes ------------------------------------------------------
 PM_STOP		equ	0
@@ -198,6 +204,12 @@ PM_PAUSE	equ	2
 RM_NONE		equ	$0000
 RM_REMEMBER	equ	$4000
 RM_PLAYBACK	equ	$8000
+
+; --- Operating Modes -----------------------------------------------------
+OM_NORMAL         equ 0
+OM_RESID_6581     equ 1
+OM_RESID_8580     equ 2
+OM_SIDBLASTER_USB equ 3
 
 ; ========================================================================;
 ; === DisplayData ========================================================;

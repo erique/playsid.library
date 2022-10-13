@@ -1,1 +1,4 @@
+*.backup
+*.uaem
+*~
 /playsid.txt
