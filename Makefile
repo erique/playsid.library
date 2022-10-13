@@ -14,7 +14,7 @@ LISTFILE := playsid.txt
 
 .PHONY: all clean
 
-all: $(TARGET) $(TARGET14)
+all: $(TARGET)
 
 clean:
 	rm -f $(TARGET) $(LISTFILE) playsid.map test_blaster.map *.o

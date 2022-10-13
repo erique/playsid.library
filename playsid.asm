@@ -45,7 +45,7 @@ SAMPLES_PER_HALF_FRAME set SAMPLES_PER_HALF_FRAME+1
 *	INCLUDES							*
 *=======================================================================*
 	NOLIST
-		include	exec/exec_lib.i
+		include lvo/exec_lib.i
 		include	exec/execbase.i
 		include	exec/initializers.i
 		include	exec/memory.i
@@ -54,12 +54,12 @@ SAMPLES_PER_HALF_FRAME set SAMPLES_PER_HALF_FRAME+1
         include exec/tasks.i
 		include intuition/intuition.i
 		include	resources/cia.i
-		include	resources/cia_lib.i
+		include	lvo/cia_lib.i
 		include	hardware/custom.i
 		include	hardware/cia.i
 		include	hardware/dmabits.i
 		include	hardware/intbits.i
-        include dos/dos_lib.i
+        include lvo/dos_lib.i
 		include	playsid_libdefs.i
     	include	dos/dosextens.i
        	include	dos/var.i
@@ -106,6 +106,7 @@ RomTagStruct	dc.w	RTC_MATCHWORD
 LibraryName	PSIDLIB_NAME
 LibraryIDString	PSIDLIB_IDSTRING
 		PSIDLIB_COPYRIGHT
+        even
 
 AutoInitTable	dc.l	psb_SIZEOF
 		dc.l	AutoInitVectors
@@ -4051,7 +4052,6 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	move.b	d6,0(a0,d7.l)
     bsr     writeSIDRegister
     bne.b   .skip9
-	move.b	d6,0(a0,d7.l)
 	move.l	a6,d7
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve3(a6),a2
@@ -4103,16 +4103,21 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 *    d6 = data
 *    d7 = address
 * out:
-*    Z clear: was written to reSID 
+*    Z set: normal playsid operation
+*    Z clear: was written to reSID/SIDBlaster
 writeSIDRegister:
-    movem.l d0-d2/a0/a1,-(sp)
 	move.l	_PlaySidBase,a2
-    move.w. psb_OperatingMode(a2),d7
-    bne.b   .special
-    moveq   #0,d0
-    movem.l (sp)+,d0-d2/a0/a1
+    tst.w   psb_OperatingMode(a2)
+    bne.b   .out
+    * Normal playsid mode
     rts
-.special
+.out
+    cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a2)
+    beq.b   write_sid_reg
+
+    * OM_RESID_6581, OM_RESID_8580
+
+    movem.l d0-d2/a0/a1,-(sp)
  ifne ENABLE_REGDUMP
     move.l  regDumpOffset,d0
     cmp.l   #10000,d0
@@ -4125,26 +4130,10 @@ writeSIDRegister:
 .1
   endif
 
-    cmp.w   #OM_SIDBLASTER,d7
-    beq.b   .sidblaster
-
     move.b  d6,d0
     move.b  d7,d1
-    move.l  psb_reSID(a0),a0
+    move.l  psb_reSID(a2),a0
     jsr     sid_write
-    moveq   #1,d0
-    movem.l (sp)+,d0-d2/a0/a1
-    rts
-
-.sidblaster
-    movem.l d3-d7/a2-a6,-(sp)
-	and.l	#$ff,d7
-	and.l	#$ff,d6
-	move.l	d7,d0
-	move.l	d6,d1
-	jsr	_sid_write_reg
-    movem.l (sp)+,d3-d7/a2-a6
-
     moveq   #1,d0
     movem.l (sp)+,d0-d2/a0/a1
     rts
@@ -4175,6 +4164,7 @@ write_sid_reg:
 	move.l	d7,d0
 	move.l	d6,d1
 	jsr	_sid_write_reg
+    moveq   #1,d0
 	movem.l	(sp)+,d0-a6
 	rts
 
@@ -4259,7 +4249,7 @@ OpenIRQ
 		CALLEXEC	OpenResource
 		move.l	(a7)+,a6
 		move.l	d0,_CiabBase
-		beq.s	.error
+		beq 	.error
 
 		tst.w	psb_TimerAFlag(a6)
 		bne.s	.2
@@ -7441,6 +7431,11 @@ _PlaySidBase	ds.l	1
 
         section    reSID1,code
 
+  ifd __VASM
+    ; Optimize stuff below
+    opt o+
+  endif
+
 @SetVolume 
     move    d0,psb_Volume(a6)
     move.l  psb_reSID(a6),a0
@@ -7450,7 +7445,7 @@ _PlaySidBase	ds.l	1
 * In:
 *   d0 = 0 for 6581, 1 for 8581
 @SetRESIDChipModel
-    lea     Sid,a0
+    move.l  psb_reSID(a6),a0
     moveq   #CHIP_MODEL_MOS6581,d0
     tst.b   d0
     beq     sid_set_chip_model
@@ -7460,23 +7455,20 @@ _PlaySidBase	ds.l	1
 * In:
 *   d0 = 0 or 1
 @SetRESIDFilter
-    lea     Sid,a0
+    move.l  psb_reSID(a6),a0
     bsr     sid_enable_filter
     rts
 
 * Out:
-*   d0 = length in bytes
-*   a0 = audio data
+*   d0 = buffer length in bytes
+*   d1 = period value used
+*   a0 = audio buffer pointer
 @GetRESIDAudioBuffer
-    move.l buffer1p,a0
+    move.l  buffer1p,a0
     move.w  #SAMPLES_PER_HALF_FRAME,d0
     move.w  #PAULA_PERIOD,d1
     rts
 
-  ifd __VASM
-    ; Optimize stuff below
-    opt o+
-  endif
         include resid-68k.s
 
         section    reSID2,code
@@ -7580,8 +7572,7 @@ reSIDWorkerEntryPoint
     move    #PAULA_PERIOD,$b6+$dff000
     move    #PAULA_PERIOD,$c6+$dff000
     move    #PAULA_PERIOD,$d6+$dff000
-    ; TODO: hook up vol control
-
+    
   ifne ENABLE_14BIT
     move    #64,$a8+$dff000
     move    #1,$d8+$dff000
@@ -7602,7 +7593,7 @@ reSIDWorkerEntryPoint
 
     bsr     fillBuffer
     
-    bsr     dmawait
+    bsr     dmawait     * probably not needed
     
   ifne ENABLE_14BIT
     move    #DMAF_SETCLR!DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
@@ -7622,8 +7613,8 @@ reSIDWorkerEntryPoint
     ; fill A
     ; ... etc
 
-    move.l  4.w,a6
 .loop
+    move.l  4.w,a6
     moveq   #0,d0
     move.b  reSIDAudioSignal(pc),d1
     bset    d1,d0
@@ -7633,7 +7624,6 @@ reSIDWorkerEntryPoint
 
     tst.b   workerStatus
     bmi.b   .x
-
 
   ifeq ENABLE_LEV4PLAY
     push    a6
