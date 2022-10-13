@@ -77,10 +77,10 @@ PM_PLAY		equ	1
 PM_PAUSE	equ	2
 
 ; --- Operating Modes -----------------------------------------------------
-OM_NORMAL       equ 0
-OM_RESID_6581   equ 1
-OM_RESID_8580   equ 2
-OM_EXTERNAL_SID equ 3
+OM_NORMAL         equ 0
+OM_RESID_6581     equ 1
+OM_RESID_8580     equ 2
+OM_SIDBLASTER_USB equ 3
 
 ; --- Module Header ------------------------------------------------------
 

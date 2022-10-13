@@ -140,6 +140,7 @@ AutoInitVectors	;***** Standard System Routines *****
 
 		;****** New stuff, reSID support ******
         dc.l    @SetOperatingMode
+        dc.l    @GetOperatingMode
         dc.l    @SetVolume
         dc.l    @SetRESIDChipModel
         dc.l    @SetRESIDFilter
@@ -322,7 +323,7 @@ AutoInitFunction
         move    #OM_RESID_8580,psb_OperatingMode(a5)
         bra.b  .continue
 .got3
-        move    #OM_EXTERNAL_SID,psb_OperatingMode(a5)
+        move    #OM_SIDBLASTER_USB,psb_OperatingMode(a5)
 .continue
         lea     20(sp),sp
         move.l  a5,a6
@@ -376,6 +377,11 @@ _DOSName
     	move.w	d0,psb_OperatingMode(a6)
 		rts
 
+
+@GetOperatingMode
+    	move.w	psb_OperatingMode(a6),d0
+		rts
+
 *-----------------------------------------------------------------------*
 @SetVertFreq	move.w	d0,psb_VertFreq(a6)
 		rts
@@ -390,7 +396,8 @@ _DOSName
 		rts
 
 *-----------------------------------------------------------------------*
-@SetDisplaySignal	move.l	a0,psb_DisplaySignalTask(a6)
+@SetDisplaySignal	
+        move.l	a0,psb_DisplaySignalTask(a6)
 		move.l	d0,psb_DisplaySignalMask(a6)
 		rts
 
@@ -4212,11 +4219,15 @@ OpenIRQ
 
 .3		
         cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
-        beq.b   .4
+        beq.b   .reSID
         cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
-        bne.b   .5
-.4
-        jsr createReSIDWorkerTask
+        beq.b   .reSID
+        ;;
+        ;; Handle other modes
+        ;;
+        bra.b   .5
+.reSID
+        jsr     createReSIDWorkerTask
 .5
         bsr	PlayDisable
 		moveq	#0,d0

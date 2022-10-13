@@ -43,6 +43,7 @@ LIBRARIES_PLAYSID_LIB_I SET	1
 	LIBDEF _LVOSetDisplayEnable
 
     LIBDEF _LVOSetOperatingMode
+    LIBDEF _LVOGetOperatingMode
     LIBDEF _LVOSetVolume
     LIBDEF _LVOSetRESIDChipModel
     LIBDEF _LVOSetRESIDFilter
