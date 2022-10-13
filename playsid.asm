@@ -22,7 +22,9 @@ ENABLE_REGDUMP  = 0
 ; This will not hang the system but music playback
 ; will easily be disturbed by other things happening 
 ; in the system. Also has debug color!
+  ifnd ENABLE_LEV4PLAY
 ENABLE_LEV4PLAY = 1
+  endif
 
 * Constants
 PAL_CLOCK=3546895
@@ -60,6 +62,7 @@ SAMPLES_PER_HALF_FRAME set SAMPLES_PER_HALF_FRAME+1
         include dos/dos_lib.i
 		include	playsid_libdefs.i
     	include	dos/dosextens.i
+       	include	dos/var.i
 	LIST
 *=======================================================================*
 *	EXTERNAL REFERENCES						*
@@ -135,8 +138,9 @@ AutoInitVectors	;***** Standard System Routines *****
 		dc.l	@SetDisplaySignal
 		dc.l	@SetDisplayEnable
 
-		;****** reSID support ******
-        dc.l    @SetRESIDVolume
+		;****** New stuff, reSID support ******
+        dc.l    @SetOperatingMode
+        dc.l    @SetVolume
         dc.l    @SetRESIDChipModel
         dc.l    @SetRESIDFilter
         dc.l    @GetRESIDAudioBuffer
@@ -158,6 +162,7 @@ AutoInitFunction
 		move.l	a6,psb_SysLib(a5)
 		move.l	a0,psb_SegList(a5)
 		move.l	a5,_PlaySidBase
+        move.l  #Sid,psb_reSID(a5)
 
 		lea	Display,a2
 		move.l	a2,psb_DisplayData(a5)
@@ -259,11 +264,12 @@ AutoInitFunction
 		tst.w	psb_EmulResourceFlag(a6)
 		beq.s	.LibOK
 		moveq	#SID_LIBINUSE,d0
-		bra.s	.Exit
+		bra 	.Exit
 .LibOK		bsr	AllocEmulMem
 		tst.l	d0
-		bne.s	.Exit
-.MemOK		bsr	CheckCPU
+		bne 	.Exit
+.MemOK		
+        bsr	CheckCPU
 		bsr	Make6502Emulator
 		bsr	MakeMMUTable
 		bsr	MakeVolume
@@ -271,14 +277,76 @@ AutoInitFunction
 		bsr	MakeEnvelope
 		move.w	#PM_STOP,psb_PlayMode(a6)
 		move.w	#1,psb_EmulResourceFlag(a6)
-		moveq	#0,d0
-.Exit		
+
+
+        move.l  a6,a5
+        * Default mode
+        move    #OM_NORMAL,psb_OperatingMode(a5)
+        
+        * Get DOS
+        move.l  4.w,a6
+        lea     _DOSName(pc),a1
+        jsr     _LVOOldOpenLibrary(a6)
+        move.l  d0,psb_DOSBase(a5)
+    
+        * Read env variable if possible
+        move.l  d0,a6
+        cmp     #36,LIB_VERSION(a6)
+        blo.b   .continue
+
+        lea     -20(sp),sp
+        move.l  #.envVarName,d1     * variable name
+        move.l  sp,d2               * output buffer
+        moveq   #20,d3              * space available
+        move.l  #GVF_GLOBAL_ONLY,d4 * global variable
+        jsr     _LVOGetVar(a6)      * get it
+        tst.l   d0
+        bmi.b   .continue
+        move.l  sp,a0
+        cmp.b   #"0",(a0)
+        beq.b   .got0
+        cmp.b   #"1",(a0)
+        beq.b   .got1
+        cmp.b   #"2",(a0)
+        beq.b   .got2
+        cmp.b   #"3",(a0)
+        beq.b   .got3
+        bra.b   .continue
+.got0
+        move    #OM_NORMAL,psb_OperatingMode(a5)
+        bra.b  .continue
+.got1
+        move    #OM_RESID_6581,psb_OperatingMode(a5)
+        bra.b  .continue
+.got2
+        move    #OM_RESID_8580,psb_OperatingMode(a5)
+        bra.b  .continue
+.got3
+        move    #OM_EXTERNAL_SID,psb_OperatingMode(a5)
+.continue
+        lea     20(sp),sp
+        move.l  a5,a6
+
+        * Default volume
+        moveq   #$40,d0
+        jsr     @SetVolume
+    
  ifne ENABLE_REGDUMP
         clr.l   regDumpOffset
  endif
+        * Status: OK
+        moveq	#0,d0
+.Exit
         movem.l	(a7)+,d2-d7/a2-a6
 		;CALLEXEC Permit
 		rts
+
+.envVarName
+    dc.b    "PlaySIDMode",0
+
+_DOSName
+    dc.b    "dos.library",0
+    even
 
 *-----------------------------------------------------------------------*
 @FreeEmulResource
@@ -290,11 +358,22 @@ AutoInitFunction
 		bsr	FreeEmulMem
 		clr.w	psb_EmulResourceFlag(a6)
 .Exit		
+
+        move.l  psb_DOSBase(a6),a1
+        move.l  4.w,a6
+        jsr     _LVOCloseLibrary(a6)
+
   if ENABLE_REGDUMP
         jsr     saveDump
   endif
         movem.l	(a7)+,d2-d7/a2-a6
 		;CALLEXEC Permit
+		rts
+
+*-----------------------------------------------------------------------*
+
+@SetOperatingMode
+    	move.w	d0,psb_OperatingMode(a6)
 		rts
 
 *-----------------------------------------------------------------------*
@@ -616,13 +695,17 @@ Init64		movem.l	d2-d7,-(a7)
 
 *-----------------------------------------------------------------------*
 Play64:
-       ; move    #$0f0,$dff180
         bsr	EmulNextStep
-		;bsr	DoSound
+        
+        tst.w   psb_OperatingMode(a6)
+        bne.b   .1
+		bsr	    DoSound
+		bsr	    ReadDisplayData
+		bsr	    DisplayRequest
+.1
 		bsr	CalcTime
-		;bsr	ReadDisplayData
-		;bsr	DisplayRequest
 		bsr	CheckC64TimerA
+
   ifne ENABLE_REGDUMP
         addq.w  #1,regDumpTime
   endif
@@ -984,26 +1067,27 @@ InitSID		movem.l	a2-a3,-(a7)
 		move.w	#4,ch_SamLen(a0)
 
     movem.l d0-a6,-(sp)
-    lea     Sid,a0
+    move.l  psb_reSID(a6),a0
     jsr     sid_constructor
 
     move.l  #985248,d0
     moveq   #SAMPLING_METHOD_SAMPLE_FAST,d1
     move.l  #SAMPLING_FREQ,d2
-    lea     Sid,a0
+    move.l  psb_reSID(a6),a0
     jsr     sid_set_sampling_parameters
 
-	lea     Sid,a0
+	move.l  psb_reSID(a6),a0
     jsr     sid_reset
 
-    moveq   #1,d0
-	lea     Sid,a0
-    jsr     sid_enable_filter
-
-    moveq   #1,d0
-	lea     Sid,a0
-    jsr     sid_enable_external_filter
-
+    moveq   #CHIP_MODEL_MOS6581,d0
+    cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+    beq.b   .1
+    cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+    bne.b   .1
+    moveq   #CHIP_MODEL_MOS8580,d0
+.1
+    move.l  psb_reSID(a6),a0
+    jsr     sid_set_chip_model
     movem.l (sp)+,d0-a6
   
   
@@ -3034,13 +3118,19 @@ Envelopes
 		move.l	psb_VolumePointer(a6),a1
 		move.l	psb_Enve1(a6),a0
 		moveq	#$00,d0
-		bsr	.Calculate
+		bsr	    .Calculate
+        mulu.w  psb_Volume(a6),d0
+        lsr     #6,d0
 		move.w	d0,$dff0a8
 		move.l	psb_Enve2(a6),a0
-		bsr.s	.Calculate
+		bsr 	.Calculate
+        mulu.w  psb_Volume(a6),d0
+        lsr     #6,d0
 		move.w	d0,$dff0b8
 		move.l	psb_Enve3(a6),a0
 		bsr.s	.Calculate
+        mulu.w  psb_Volume(a6),d0
+        lsr     #6,d0
 		move.w	d0,$dff0c8
 		swap	d1
 		move.w	d1,d2
@@ -3730,61 +3820,67 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	move.w	#$D404,d7
 	move.b	d6,0(a0,d7.l)
     bsr     writeSIDRegister
-;	move.l	a6,-(a7)
-;	move.l	_PlaySidBase,a6
-;	move.l	psb_Enve1(a6),a2
-;	lsr.b	#1,d6
-;	bcs.s	.D4041			;Gate turned on ?
-;	clr.w	env_Mode(a2)		;Release
-;	move.l	(a7)+,a6
-;	Next_Inst
-;.D4041
-;	tst.b	env_Mode(a2)
-;	bne.s	.D4042			;Gate was already on ?
-;	or.b	#$01,$D420-$D404(a0,d7.l)	;New Envelope
-;	move.w	env_CurrentAddr(a2),d7
-;	move.l	psb_EnvelopeMem(a6),a3
-;	move.b	(a3,d7.l),d6
-;	move.l	psb_AttackTable(a6),a3
-;	add.w	d6,d6
-;	move.w	0(a3,d6.w),env_CurrentAddr(a2)
-;	moveq	#$00,d6
-;	move.l	psb_MMUMem(a6),a3
-;	st	env_Mode(a2)			;Attack
-;.D4042
-;	move.l	(a7)+,a6
+    bne.b   .skip1
+	move.l	a6,-(a7)
+	move.l	_PlaySidBase,a6
+	move.l	psb_Enve1(a6),a2
+	lsr.b	#1,d6
+	bcs.s	.D4041			;Gate turned on ?
+	clr.w	env_Mode(a2)		;Release
+	move.l	(a7)+,a6
+	Next_Inst
+.D4041
+	tst.b	env_Mode(a2)
+	bne.s	.D4042			;Gate was already on ?
+	or.b	#$01,$D420-$D404(a0,d7.l)	;New Envelope
+	move.w	env_CurrentAddr(a2),d7
+	move.l	psb_EnvelopeMem(a6),a3
+	move.b	(a3,d7.l),d6
+	move.l	psb_AttackTable(a6),a3
+	add.w	d6,d6
+	move.w	0(a3,d6.w),env_CurrentAddr(a2)
+	moveq	#$00,d6
+	move.l	psb_MMUMem(a6),a3
+	st	env_Mode(a2)			;Attack
+.D4042
+	move.l	(a7)+,a6
+.skip1
 	Next_Inst
 .D405
 	move.w	#$D405,d7
 	move.b	d6,0(a0,d7.l)
     bsr     writeSIDRegister
-;	move.l	a6,d7
-;	move.l	_PlaySidBase,a6
-;	move.l	psb_Enve1(a6),a2
-;	lsl.w	#3,d6
-;	move.l	psb_AttackDecay(a6),a3
-;	move.l	0(a3,d6.w),env_Attack(a2)
-;	move.l	4(a3,d6.w),env_Decay(a2)
-;	moveq	#$00,d6
-;	move.l	psb_MMUMem(a6),a3
-;	move.l	d7,a6
-;	moveq	#$00,d7
+    bne.b   .skip2
+	move.l	a6,d7
+	move.l	_PlaySidBase,a6
+	move.l	psb_Enve1(a6),a2
+	lsl.w	#3,d6
+	move.l	psb_AttackDecay(a6),a3
+	move.l	0(a3,d6.w),env_Attack(a2)
+	move.l	4(a3,d6.w),env_Decay(a2)
+	moveq	#$00,d6
+	move.l	psb_MMUMem(a6),a3
+	move.l	d7,a6
+	moveq	#$00,d7
+.skip2
 	Next_Inst
 .D406
 	move.w	#$D406,d7
 	move.b	d6,0(a0,d7.l)
     bsr     writeSIDRegister
-;	move.l	a6,d7
-;	move.l	_PlaySidBase,a6
-;	move.l	psb_Enve1(a6),a2
-;	lsl.w	#3,d6
-;	move.l	psb_SustainRelease(a6),a3
-;	move.w	0(a3,d6.w),env_Sustain(a2)
-;	move.l	4(a3,d6.w),env_Release(a2)
-;	moveq	#$00,d6
-;	move.l	psb_MMUMem(a6),a3
-;	move.l	d7,a6
-;	moveq	#$00,d7
+    bne.b   .skip3
+	move.l	a6,d7
+	move.l	_PlaySidBase,a6
+	move.l	psb_Enve1(a6),a2
+	lsl.w	#3,d6
+	move.l	psb_SustainRelease(a6),a3
+	move.w	0(a3,d6.w),env_Sustain(a2)
+	move.l	4(a3,d6.w),env_Release(a2)
+	moveq	#$00,d6
+	move.l	psb_MMUMem(a6),a3
+	move.l	d7,a6
+	moveq	#$00,d7
+.skip3
 	Next_Inst
 .D407
 	move.w	#$D407,d7
@@ -3810,61 +3906,67 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	move.w	#$D40B,d7
 	move.b	d6,0(a0,d7.l)
     bsr     writeSIDRegister
-;	move.l	a6,-(a7)
-;	move.l	_PlaySidBase,a6
-;	move.l	psb_Enve2(a6),a2
-;	lsr.b	#1,d6
-;	bcs.s	.D40B1			;Gate turned on ?
-;	clr.w	env_Mode(a2)		;Release
-;	move.l	(a7)+,a6
-;	Next_Inst
-;.D40B1
-;	tst.b	env_Mode(a2)
-;	bne.s	.D40B2			;Gate was already on ?
-;	or.b	#$02,$D420-$D40B(a0,d7.l)	;New Envelope
-;	move.w	env_CurrentAddr(a2),d7
-;	move.l	psb_EnvelopeMem(a6),a3
-;	move.b	(a3,d7.l),d6
-;	move.l	psb_AttackTable(a6),a3
-;	add.w	d6,d6
-;	move.w	0(a3,d6.w),env_CurrentAddr(a2)
-;	moveq	#$00,d6
-;	move.l	psb_MMUMem(a6),a3
-;	st	env_Mode(a2)			;Attack
-;.D40B2
-;	move.l	(a7)+,a6
+    bne.b   .skip4
+	move.l	a6,-(a7)
+	move.l	_PlaySidBase,a6
+	move.l	psb_Enve2(a6),a2
+	lsr.b	#1,d6
+	bcs.s	.D40B1			;Gate turned on ?
+	clr.w	env_Mode(a2)		;Release
+	move.l	(a7)+,a6
+	Next_Inst
+.D40B1
+	tst.b	env_Mode(a2)
+	bne.s	.D40B2			;Gate was already on ?
+	or.b	#$02,$D420-$D40B(a0,d7.l)	;New Envelope
+	move.w	env_CurrentAddr(a2),d7
+	move.l	psb_EnvelopeMem(a6),a3
+	move.b	(a3,d7.l),d6
+	move.l	psb_AttackTable(a6),a3
+	add.w	d6,d6
+	move.w	0(a3,d6.w),env_CurrentAddr(a2)
+	moveq	#$00,d6
+	move.l	psb_MMUMem(a6),a3
+	st	env_Mode(a2)			;Attack
+.D40B2
+	move.l	(a7)+,a6
+.skip4
 	Next_Inst
 .D40C
 	move.w	#$D40C,d7
 	move.b	d6,0(a0,d7.l)
     bsr     writeSIDRegister
-;	move.l	a6,d7
-;	move.l	_PlaySidBase,a6
-;	move.l	psb_Enve2(a6),a2
-;	lsl.w	#3,d6
-;	move.l	psb_AttackDecay(a6),a3
-;	move.l	0(a3,d6.w),env_Attack(a2)
-;	move.l	4(a3,d6.w),env_Decay(a2)
-;	moveq	#$00,d6
-;	move.l	psb_MMUMem(a6),a3
-;	move.l	d7,a6
-;	moveq	#$00,d7
+    bne.b   .skip5
+	move.l	a6,d7
+	move.l	_PlaySidBase,a6
+	move.l	psb_Enve2(a6),a2
+	lsl.w	#3,d6
+	move.l	psb_AttackDecay(a6),a3
+	move.l	0(a3,d6.w),env_Attack(a2)
+	move.l	4(a3,d6.w),env_Decay(a2)
+	moveq	#$00,d6
+	move.l	psb_MMUMem(a6),a3
+	move.l	d7,a6
+	moveq	#$00,d7
+.skip5
 	Next_Inst
 .D40D
 	move.w	#$D40D,d7
 	move.b	d6,0(a0,d7.l)
     bsr     writeSIDRegister
-;	move.l	a6,d7
-;	move.l	_PlaySidBase,a6
-;	move.l	psb_Enve2(a6),a2
-;	lsl.w	#3,d6
-;	move.l	psb_SustainRelease(a6),a3
-;	move.w	0(a3,d6.w),env_Sustain(a2)
-;	move.l	4(a3,d6.w),env_Release(a2)
-;	moveq	#$00,d6
-;	move.l	psb_MMUMem(a6),a3
-;	move.l	d7,a6
-;	moveq	#$00,d7
+    bne.b   .skip6
+	move.l	a6,d7
+	move.l	_PlaySidBase,a6
+	move.l	psb_Enve2(a6),a2
+	lsl.w	#3,d6
+	move.l	psb_SustainRelease(a6),a3
+	move.w	0(a3,d6.w),env_Sustain(a2)
+	move.l	4(a3,d6.w),env_Release(a2)
+	moveq	#$00,d6
+	move.l	psb_MMUMem(a6),a3
+	move.l	d7,a6
+	moveq	#$00,d7
+.skip6
 	Next_Inst
 .D40E
 	move.w	#$D40E,d7
@@ -3890,62 +3992,68 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	move.w	#$D412,d7
 	move.b	d6,0(a0,d7.l)
     bsr     writeSIDRegister
-;	move.l	a6,-(a7)
-;	move.l	_PlaySidBase,a6
-;	move.l	psb_Enve3(a6),a2
-;	lsr.b	#1,d6
-;	bcs.s	.D4121			;Gate turned on ?
-;	clr.w	env_Mode(a2)		;Release
-;	move.l	(a7)+,a6
-;	Next_Inst
-;.D4121
-;	tst.b	env_Mode(a2)
-;	bne.s	.D4122			;Gate was already on ?
-;	or.b	#$04,$D420-$D412(a0,d7.l)	;New Envelope
-;	move.w	env_CurrentAddr(a2),d7
-;	move.l	psb_EnvelopeMem(a6),a3
-;	move.b	(a3,d7.l),d6
-;	move.l	psb_AttackTable(a6),a3
-;	add.w	d6,d6
-;	move.w	0(a3,d6.w),env_CurrentAddr(a2)
-;	moveq	#$00,d6
-;	move.l	psb_MMUMem(a6),a3
-;	st	env_Mode(a2)			;Attack
-;.D4122
-;	move.l	(a7)+,a6
+    bne.b   .skip7
+	move.l	a6,-(a7)
+	move.l	_PlaySidBase,a6
+	move.l	psb_Enve3(a6),a2
+	lsr.b	#1,d6
+	bcs.s	.D4121			;Gate turned on ?
+	clr.w	env_Mode(a2)		;Release
+	move.l	(a7)+,a6
+	Next_Inst
+.D4121
+	tst.b	env_Mode(a2)
+	bne.s	.D4122			;Gate was already on ?
+	or.b	#$04,$D420-$D412(a0,d7.l)	;New Envelope
+	move.w	env_CurrentAddr(a2),d7
+	move.l	psb_EnvelopeMem(a6),a3
+	move.b	(a3,d7.l),d6
+	move.l	psb_AttackTable(a6),a3
+	add.w	d6,d6
+	move.w	0(a3,d6.w),env_CurrentAddr(a2)
+	moveq	#$00,d6
+	move.l	psb_MMUMem(a6),a3
+	st	env_Mode(a2)			;Attack
+.D4122
+	move.l	(a7)+,a6
+.skip7
 	Next_Inst
 .D413
 	move.w	#$D413,d7
 	move.b	d6,0(a0,d7.l)
-    bsr.b    writeSIDRegister
-;	move.l	a6,d7
-;	move.l	_PlaySidBase,a6
-;	move.l	psb_Enve3(a6),a2
-;	lsl.w	#3,d6
-;	move.l	psb_AttackDecay(a6),a3
-;	move.l	0(a3,d6.w),env_Attack(a2)
-;	move.l	4(a3,d6.w),env_Decay(a2)
-;	moveq	#$00,d6
-;	move.l	psb_MMUMem(a6),a3
-;	move.l	d7,a6
-;	moveq	#$00,d7
+    bsr     writeSIDRegister
+    bne.b   .skip8
+	move.l	a6,d7
+	move.l	_PlaySidBase,a6
+	move.l	psb_Enve3(a6),a2
+	lsl.w	#3,d6
+	move.l	psb_AttackDecay(a6),a3
+	move.l	0(a3,d6.w),env_Attack(a2)
+	move.l	4(a3,d6.w),env_Decay(a2)
+	moveq	#$00,d6
+	move.l	psb_MMUMem(a6),a3
+	move.l	d7,a6
+	moveq	#$00,d7
+.skip8
 	Next_Inst
 .D414
 	move.w	#$D414,d7
 	move.b	d6,0(a0,d7.l)
-    bsr.b    writeSIDRegister
-;	move.b	d6,0(a0,d7.l)
-;	move.l	a6,d7
-;	move.l	_PlaySidBase,a6
-;	move.l	psb_Enve3(a6),a2
-;	lsl.w	#3,d6
-;	move.l	psb_SustainRelease(a6),a3
-;	move.w	0(a3,d6.w),env_Sustain(a2)
-;	move.l	4(a3,d6.w),env_Release(a2)
-;	moveq	#$00,d6
-;	move.l	psb_MMUMem(a6),a3
-;	move.l	d7,a6
-;	moveq	#$00,d7
+    bsr     writeSIDRegister
+    bne.b   .skip9
+	move.b	d6,0(a0,d7.l)
+	move.l	a6,d7
+	move.l	_PlaySidBase,a6
+	move.l	psb_Enve3(a6),a2
+	lsl.w	#3,d6
+	move.l	psb_SustainRelease(a6),a3
+	move.w	0(a3,d6.w),env_Sustain(a2)
+	move.l	4(a3,d6.w),env_Release(a2)
+	moveq	#$00,d6
+	move.l	psb_MMUMem(a6),a3
+	move.l	d7,a6
+	moveq	#$00,d7
+.skip9
 	Next_Inst
 .D415
 	move.w	#$D415,d7
@@ -3966,41 +4074,52 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	move.w	#$D418,d7
 	move.b	d6,0(a0,d7.l)
     bsr.b   writeSIDRegister
-;	move.l	a6,d7
-;	move.l	_PlaySidBase,a6
-;	move.l	psb_Chan4(a6),a2
-;	tst.b	ch4_Active(a2)
-;	bne.s	.D4181				;Channel Four Active
-;	andi.w	#$000f,d6
-;	lsl.w	#2,d6
-;	move.l	psb_VolumePointers(a6,d6.w),psb_VolumePointer(a6)
-;.D4181	move.l	d7,a6
-;	moveq	#$00,d7
+    bne.b   .skip10
+	move.l	a6,d7
+	move.l	_PlaySidBase,a6
+	move.l	psb_Chan4(a6),a2
+	tst.b	ch4_Active(a2)
+	bne.s	.D4181				;Channel Four Active
+	andi.w	#$000f,d6
+	lsl.w	#2,d6
+	move.l	psb_VolumePointers(a6,d6.w),psb_VolumePointer(a6)
+.D4181	move.l	d7,a6
+	moveq	#$00,d7
+.skip10
 	Next_Inst
 
 
 * in:
 *    d6 = data
 *    d7 = address
+* out:
+*    Z clear: was written to reSID 
 writeSIDRegister:
     movem.l d0-d2/a0/a1,-(sp)
-
-  ifne ENABLE_REGDUMP
+	move.l	_PlaySidBase,a0
+    tst.w   psb_OperatingMode(a0)
+    bne.b   .special
+    moveq   #0,d0
+    movem.l (sp)+,d0-d2/a0/a1
+    rts
+.special
+ ifne ENABLE_REGDUMP
     move.l  regDumpOffset,d0
     cmp.l   #10000,d0
     bhs.b   .1
     addq.l  #1,regDumpOffset
-    lea     regDump,a0
-    move.w  regDumpTime,(a0,d0.l*4)
-    move.b  d7,2(a0,d0.l*4)
-    move.b  d6,3(a0,d0.l*4)
+    lea     regDump,a1
+    move.w  regDumpTime,(a1,d0.l*4)
+    move.b  d7,2(a1,d0.l*4)
+    move.b  d6,3(a1,d0.l*4)
 .1
   endif
 
     move.b  d6,d0
     move.b  d7,d1
-    lea     Sid,a0
+    move.l  psb_reSID(a0),a0
     jsr     sid_write
+    moveq   #1,d0
     movem.l (sp)+,d0-d2/a0/a1
     rts
 
@@ -4010,7 +4129,7 @@ writeSIDRegister:
 *	INTERRUPT HANDLING ROUTINES					*
 *=======================================================================*
 OpenIRQ		
-        ;move.l	a6,timerAIntrPSB
+        move.l	a6,timerAIntrPSB
 		move.l	a6,PlayIntrPSB
 	    move.l	psb_Chan1(a6),level4Intr1Data
 		move.l	psb_Chan2(a6),level4Intr2Data
@@ -4018,41 +4137,45 @@ OpenIRQ
 		move.l	psb_Chan4(a6),level4Intr4Data
 
 		lea	_custom,a0
-		;move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTENA(a0)
-		;move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTREQ(a0)
 
+        tst.w   psb_OperatingMode(a6)
+        bne.b   .o1
+		move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTENA(a0)
+		move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTREQ(a0)
+.o1
 		tst.w	psb_IntVecAudFlag(a6)
 		bne.s	.1
 
-		;moveq	#INTB_AUD0,d0		; Allocate Level 4
-		;lea	level4Intr1,a1
-		;move.l	a6,-(a7)
-		;CALLEXEC	SetIntVector
-		;move.l	(a7)+,a6
-		;move.l	d0,psb_OldIntVecAud0(a6)
-;
-		;moveq	#INTB_AUD1,d0
-		;lea	level4Intr2,a1
-		;move.l	a6,-(a7)
-		;CALLEXEC	SetIntVector
-		;move.l	(a7)+,a6
-		;move.l	d0,psb_OldIntVecAud1(a6)
-;
-		;moveq	#INTB_AUD2,d0
-		;lea	level4Intr3,a1
-		;move.l	a6,-(a7)
-		;CALLEXEC	SetIntVector
-		;move.l	(a7)+,a6
-		;move.l	d0,psb_OldIntVecAud2(a6)
-;
-		;moveq	#INTB_AUD3,d0
-		;lea	level4Intr4,a1
-		;move.l	a6,-(a7)
-		;CALLEXEC	SetIntVector
-		;move.l	(a7)+,a6
-		;move.l	d0,psb_OldIntVecAud3(a6)
+        tst.w   psb_OperatingMode(a6)
+        bne     .1
 
-		move.w	#1,psb_IntVecAudFlag(a6)
+	    moveq	#INTB_AUD0,d0		; Allocate Level 4
+	    lea	level4Intr1,a1
+	    move.l	a6,-(a7)
+	    CALLEXEC	SetIntVector
+	    move.l	(a7)+,a6
+	    move.l	d0,psb_OldIntVecAud0(a6)
+        moveq	#INTB_AUD1,d0
+	    lea	level4Intr2,a1
+	    move.l	a6,-(a7)
+	    CALLEXEC	SetIntVector
+	    move.l	(a7)+,a6
+	    move.l	d0,psb_OldIntVecAud1(a6)
+        moveq	#INTB_AUD2,d0
+	    lea	level4Intr3,a1
+	    move.l	a6,-(a7)
+	    CALLEXEC	SetIntVector
+	    move.l	(a7)+,a6
+	    move.l	d0,psb_OldIntVecAud2(a6)
+        moveq	#INTB_AUD3,d0
+	    lea	level4Intr4,a1
+	    move.l	a6,-(a7)
+	    CALLEXEC	SetIntVector
+	    move.l	(a7)+,a6
+	    move.l	d0,psb_OldIntVecAud3(a6)
+	    
+        ; Got level4 stuff!
+        move.w	#1,psb_IntVecAudFlag(a6)
 
 .1		lea	CiabName,a1	; Open Cia Resource
 		moveq	#0,d0
@@ -4062,16 +4185,19 @@ OpenIRQ
 		move.l	d0,_CiabBase
 		beq.s	.error
 
-		;tst.w	psb_TimerAFlag(a6)
-		;bne.s	.2
-		;lea	timerAIntr,a1	; Allocate Timers
-		;moveq	#CIAICRB_TA,d0
-		;move.l	a6,-(a7)
-		;CALLCIAB	AddICRVector
-		;move.l	(a7)+,a6
-		;tst.l	d0
-		;bne.s	.error
-		;move.w	#1,psb_TimerAFlag(a6)
+		tst.w	psb_TimerAFlag(a6)
+		bne.s	.2
+        tst.w   psb_OperatingMode(a6)
+        bne     .2
+
+		lea	timerAIntr,a1	; Allocate Timers
+		moveq	#CIAICRB_TA,d0
+		move.l	a6,-(a7)
+		CALLCIAB	AddICRVector
+		move.l	(a7)+,a6
+		tst.l	d0
+		bne.s	.error
+		move.w	#1,psb_TimerAFlag(a6)
 
 .2		tst.w	psb_TimerBFlag(a6)
 		bne.s	.3
@@ -4085,11 +4211,18 @@ OpenIRQ
 		move.w	#1,psb_TimerBFlag(a6)
 
 .3		
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .4
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        bne.b   .5
+.4
         jsr createReSIDWorkerTask
+.5
         bsr	PlayDisable
 		moveq	#0,d0
 		rts
-.error		bsr	CloseIRQ
+.error		
+        bsr	CloseIRQ
 		moveq	#SID_NOCIATIMER,D0
 		rts
 
@@ -4103,49 +4236,58 @@ CloseIRQ	tst.w	psb_TimerBFlag(a6)
 		move.l	(a7)+,a6
 		move.w	#0,psb_TimerBFlag(a6)
 .1
-		;tst.w	psb_TimerAFlag(a6)
-		;beq.s	.2
-		;lea	timerAIntr,a1
-		;moveq	#CIAICRB_TA,d0
-		;move.l	a6,-(a7)
-		;CALLCIAB	RemICRVector
-		;move.l	(a7)+,a6
-		;move.w	#0,psb_TimerAFlag(a6)
+		tst.w	psb_TimerAFlag(a6)
+		beq.s	.2
+		lea	timerAIntr,a1
+		moveq	#CIAICRB_TA,d0
+		move.l	a6,-(a7)
+		CALLCIAB	RemICRVector
+		move.l	(a7)+,a6
+		move.w	#0,psb_TimerAFlag(a6)
 .2
 		tst.w	psb_IntVecAudFlag(a6)
 		beq.s	.3
-		;moveq	#INTB_AUD3,d0	; Deallocate Level 4
-		;move.l	psb_OldIntVecAud3(a6),a1
-		;move.l	a6,-(a7)
-		;CALLEXEC	SetIntVector
-		;move.l	(a7)+,a6
-		;moveq	#INTB_AUD2,d0
-		;move.l	psb_OldIntVecAud2(a6),a1
-		;move.l	a6,-(a7)
-		;CALLEXEC	SetIntVector
-		;move.l	(a7)+,a6
-		;moveq	#INTB_AUD1,d0
-		;move.l	psb_OldIntVecAud1(a6),a1
-		;move.l	a6,-(a7)
-		;CALLEXEC	SetIntVector
-		;move.l	(a7)+,a6
-		;moveq	#INTB_AUD0,d0
-		;move.l	psb_OldIntVecAud0(a6),a1
-		;move.l	a6,-(a7)
-		;CALLEXEC	SetIntVector
-		;move.l	(a7)+,a6
+		moveq	#INTB_AUD3,d0	; Deallocate Level 4
+		move.l	psb_OldIntVecAud3(a6),a1
+		move.l	a6,-(a7)
+		CALLEXEC	SetIntVector
+		move.l	(a7)+,a6
+		moveq	#INTB_AUD2,d0
+		move.l	psb_OldIntVecAud2(a6),a1
+		move.l	a6,-(a7)
+		CALLEXEC	SetIntVector
+		move.l	(a7)+,a6
+		moveq	#INTB_AUD1,d0
+		move.l	psb_OldIntVecAud1(a6),a1
+		move.l	a6,-(a7)
+		CALLEXEC	SetIntVector
+		move.l	(a7)+,a6
+		moveq	#INTB_AUD0,d0
+		move.l	psb_OldIntVecAud0(a6),a1
+		move.l	a6,-(a7)
+		CALLEXEC	SetIntVector
+		move.l	(a7)+,a6
 		move.w	#0,psb_IntVecAudFlag(a6)
 .3
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .4
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        bne.b   .5
+.4
         jsr     stopReSIDWorkerTask
+.5
 		rts
 
 *-----------------------------------------------------------------------*
 InitTimers
-		bsr	StopTimerA
 		move.w	psb_TimerConstA(a6),d0		; ~700
+        tst.w   psb_OperatingMode(a6)
+        bne.b   .1
+		bsr	StopTimerA
 		bsr	SetTimerA
 		bsr	StartTimerA
-		bsr	StopTimerB
+.1		
+        bsr	StopTimerB
 		move.w	psb_TimerConstB(a6),d0		; ~14000
 		bsr	SetTimerB
 		bsr	StartTimerB
@@ -4153,10 +4295,10 @@ InitTimers
 
 *-----------------------------------------------------------------------*
 SetTimerA
-		;lea	_ciab,a0
-		;move.b	d0,ciatalo(a0)
-		;lsr.w	#8,d0
-		;move.b	d0,ciatahi(a0)
+		lea	_ciab,a0
+		move.b	d0,ciatalo(a0)
+		lsr.w	#8,d0
+		move.b	d0,ciatahi(a0)
 		rts
 
 *-----------------------------------------------------------------------*
@@ -4169,9 +4311,12 @@ SetTimerB
 
 *-----------------------------------------------------------------------*
 StopTimerA
-		;lea	_ciab,a0
-		;and.b	#CIACRAF_TODIN+CIACRAF_SPMODE+CIACRAF_OUTMODE+CIACRAF_PBON,ciacra(a0)	; Timer A Cia B
-		;bclr	#CIACRAB_START,ciacra(a0)
+        tst.w   psb_OperatingMode(a6)
+        bne.b   .1
+		lea	_ciab,a0
+		and.b	#CIACRAF_TODIN+CIACRAF_SPMODE+CIACRAF_OUTMODE+CIACRAF_PBON,ciacra(a0)	; Timer A Cia B
+		bclr	#CIACRAB_START,ciacra(a0)
+.1
 		rts
 
 *-----------------------------------------------------------------------*
@@ -4183,8 +4328,8 @@ StopTimerB
 
 *-----------------------------------------------------------------------*
 StartTimerA
-		;lea	_ciab,a0
-		;bset	#CIACRBB_START,ciacra(a0)
+		lea	_ciab,a0
+		bset	#CIACRBB_START,ciacra(a0)
 		rts
 
 *-----------------------------------------------------------------------*
@@ -4196,20 +4341,23 @@ StartTimerB
 *-----------------------------------------------------------------------*
 PlayDisable					;Turns off all Audio
 		bsr	StopTimerB
-		;move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTENA(a0)
-		;move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTREQ(a0)
-		;move.w	#DMAF_AUD0+DMAF_AUD1+DMAF_AUD2+DMAF_AUD3,DMACON(a0)
-		;move.w	#$0001,AUD0PER(a0)
-		;move.w	#$0001,AUD1PER(a0)
-		;move.w	#$0001,AUD2PER(a0)
-		;move.w	#$0001,AUD3PER(a0)
+        tst.w   psb_OperatingMode(a6)
+        bne.b   .1
+		move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTENA(a0)
+		move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTREQ(a0)
+		move.w	#DMAF_AUD0+DMAF_AUD1+DMAF_AUD2+DMAF_AUD3,DMACON(a0)
+		move.w	#$0001,AUD0PER(a0)
+		move.w	#$0001,AUD1PER(a0)
+		move.w	#$0001,AUD2PER(a0)
+		move.w	#$0001,AUD3PER(a0)
 		bsr	StopTimerA
-		;moveq	#0,d0
-		;lea	_custom,a0
-		;move.w	d0,AUD0VOL(a0)
-		;move.w	d0,AUD1VOL(a0)
-		;move.w	d0,AUD2VOL(a0)
-		;move.w	d0,AUD3VOL(a0)
+		moveq	#0,d0
+		lea	_custom,a0
+		move.w	d0,AUD0VOL(a0)
+		move.w	d0,AUD1VOL(a0)
+		move.w	d0,AUD2VOL(a0)
+		move.w	d0,AUD3VOL(a0)
+.1
 		rts
 
 *-----------------------------------------------------------------------*
@@ -7199,8 +7347,9 @@ _PlaySidBase	ds.l	1
 
         section    reSID1,code
 
-@SetRESIDVolume 
-    lea     Sid,a0
+@SetVolume 
+    move    d0,psb_Volume(a6)
+    move.l  psb_reSID(a6),a0
     move    d0,sid_volume(a0)
     rts
 
@@ -7277,6 +7426,7 @@ stopReSIDWorkerTask:
     beq     .x
     move.b  #-1,workerStatus
 
+    move.l  psb_DOSBase(a6),a5
     move.l  4.w,a6
     move.l  reSIDTask(pc),a1
     moveq   #0,d0
@@ -7284,9 +7434,7 @@ stopReSIDWorkerTask:
     bset    d1,d0
     jsr     _LVOSignal(a6)
 
-    lea     _DOSName(pc),a1
-    jsr     _LVOOldOpenLibrary(a6)
-    move.l  d0,a6
+    move.l  a5,a6
 .loop
     tst.b   workerStatus
     beq     .y
@@ -7294,16 +7442,10 @@ stopReSIDWorkerTask:
     jsr     _LVODelay(a6)
     bra     .loop
 .y
-    move.l  a6,a1
-    move.l  4.w,a6
-    jsr     _LVOCloseLibrary(a6)
 .x 
     movem.l (sp)+,d0-a6
     rts
 
-_DOSName
-    dc.b    "dos.library",0
-    even
 
 * Playback task
 reSIDWorkerEntryPoint

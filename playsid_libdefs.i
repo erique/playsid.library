@@ -174,6 +174,11 @@ FREE		MACRO
 	UWORD	psb_AudioDevice
 	APTR	psb_AudioIO
 	APTR	psb_AudioMP
+    ; New fields:
+    UWORD   psb_Volume
+    APTR    psb_reSID
+    UWORD   psb_OperatingMode
+    APTR    psb_DOSBase
 	LABEL	psb_SIZEOF
 
 ; --- Error --------------------------------------------------------------
@@ -198,6 +203,12 @@ PM_PAUSE	equ	2
 RM_NONE		equ	$0000
 RM_REMEMBER	equ	$4000
 RM_PLAYBACK	equ	$8000
+
+; --- Operating Modes -----------------------------------------------------
+OM_NORMAL       equ 0
+OM_RESID_6581   equ 1
+OM_RESID_8580   equ 2
+OM_EXTERNAL_SID equ 3
 
 ; ========================================================================;
 ; === DisplayData ========================================================;
