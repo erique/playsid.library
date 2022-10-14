@@ -218,6 +218,7 @@ AutoInitFunction
 		move.w	d0,psb_ChannelEnable+4(a6)
 		move.w	d0,psb_ChannelEnable+6(a6)
 		move.w	d0,psb_AudioDevice(a6)
+        move.w  #-1,psb_OperatingMode(a6)
 
 		clr.w	psb_TimeSeconds(a6)		;Set time to 00:00
 		clr.w	psb_TimeMinutes(a6)
@@ -270,7 +271,24 @@ AutoInitFunction
 		moveq	#SID_LIBINUSE,d0
 		bra 	.Exit
 .LibOK		
-        bsr	AllocEmulMem
+        move.l  a6,a5
+        move.l  4.w,a6
+        lea     _DOSName(pc),a1
+        jsr     _LVOOldOpenLibrary(a6)
+        move.l  d0,psb_DOSBase(a5)
+        move.l  a5,a6
+        bsr     SetDefaultOperatingMode
+
+        cmp.b   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
+        bne.b   .blasterOk
+        bsr     start_sid_blaster
+		tst.l	d0
+        beq.b   .blasterOk
+        moveq	#SID_NOSIDBLASTER,D0
+        bra     .Exit
+.blasterOk
+
+        bsr	    AllocEmulMem
 		tst.l	d0
 		bne 	.Exit
 .MemOK		
@@ -284,18 +302,38 @@ AutoInitFunction
 		move.w	#1,psb_EmulResourceFlag(a6)
 
 
+        * Default volume
+        moveq   #$40,d0
+        jsr     @SetVolume
+    
+ ifne ENABLE_REGDUMP
+        clr.l   regDumpOffset
+ endif
+        * Status: OK
+        moveq	#0,d0
+.Exit
+        movem.l	(a7)+,d2-d7/a2-a6
+		;CALLEXEC Permit
+		rts
+
+
+_DOSName:
+    dc.b    "dos.library",0
+    even
+
+* Figure out a value for the operating mode if it has not been set by the API user.
+SetDefaultOperatingMode:
+        tst.w   psb_OperatingMode(a5)
+        bmi.b   .1
+        rts
+.1
         move.l  a6,a5
         * Default mode
+
         move    #OM_NORMAL,psb_OperatingMode(a5)
-        
-        * Get DOS
-        move.l  4.w,a6
-        lea     _DOSName(pc),a1
-        jsr     _LVOOldOpenLibrary(a6)
-        move.l  d0,psb_DOSBase(a5)
     
         * Read env variable if possible
-        move.l  d0,a6
+        move.l  psb_DOSBase(a5),a6
         cmp     #36,LIB_VERSION(a6)
         blo.b   .continue
 
@@ -331,26 +369,10 @@ AutoInitFunction
 .continue
         lea     20(sp),sp
         move.l  a5,a6
+        rts
 
-        * Default volume
-        moveq   #$40,d0
-        jsr     @SetVolume
-    
- ifne ENABLE_REGDUMP
-        clr.l   regDumpOffset
- endif
-        * Status: OK
-        moveq	#0,d0
-.Exit
-        movem.l	(a7)+,d2-d7/a2-a6
-		;CALLEXEC Permit
-		rts
-
-.envVarName
+.envVarName:
     dc.b    "PlaySIDMode",0
-
-_DOSName
-    dc.b    "dos.library",0
     even
 
 *-----------------------------------------------------------------------*
@@ -361,7 +383,13 @@ _DOSName
 		beq.s	.Exit
 		bsr	@StopSong
 		bsr	FreeEmulMem
+        cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
+        bne.b   .noBlaster
+        bsr     stop_sid_blaster
+.noBlaster
 		clr.w	psb_EmulResourceFlag(a6)
+        * Undefine operating mode so that will be determined again the next time.
+        move.w  #-1,psb_OperatingMode(a6)
 .Exit		
 
         move.l  psb_DOSBase(a6),a1
@@ -4281,17 +4309,7 @@ OpenIRQ
         beq.b   .reSID
         cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
         beq.b   .reSID
-        cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
-        beq.b   .sidBlaster
-        bra.b   .5
-    
-.sidBlaster
-        bsr	start_sid_blaster
-		tst.l	d0
-        bne.b   .5
-        bsr	    CloseIRQ
-		moveq	#SID_NOSIDBLASTER,D0
-        rts
+        bra.b   .5    
 .reSID
         jsr     createReSIDWorkerTask
 .5
@@ -4350,15 +4368,10 @@ CloseIRQ	tst.w	psb_TimerBFlag(a6)
         beq.b   .resid
         cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
         beq.b   .resid
-        cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
-        beq.b   .sidblaster
         rts
 .resid
         jsr     stopReSIDWorkerTask
         rts
-.sidblaster
-		bsr	    stop_sid_blaster
-		rts
 
 *-----------------------------------------------------------------------*
 InitTimers
