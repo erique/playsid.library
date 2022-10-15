@@ -6,38 +6,58 @@
 *                                                                       *
 *=======================================================================*
 
-SIDs have never sounded so good on the Amiga!
+This version of playsid.library provides three different sound
+output methods:
 
-This version of the library has been modified to use the 680x0 
-port of Dag Lem's reSID emulation engine instead of the original 
-SID-emulation. reSID is a cycle exact emulation with filter
-support.
+- The original SID emulation by Per Sundell & Ron Birk
+- The reSID emulation engine by Dag Lem, ported to assembler
+- SIDBlaster-USB, a device that uses an actual SID chip for sound
 
-This is a drop-in replacement. To install, copy "playsid.library" 
-to LIBS: over the original. You may also choose a version which 
-uses the Paula 14-bit output mode: "playsid.library-14bit". 
-Remove the "-14bit" part from the name in this case. It may
-provide a less noisy output compared to the ordinary version.
+To use, copy "playsid.library" to LIBS:, replacing the original
+version. By default it will use the original SID emulation mode.
+
+To select the output mode, set the environment variable "PlaySIDMode":
+0 = Original
+1 = reSID 6581
+2 = reSID 8580
+3 = SIDBlaster USB
 
 Applications using "playsid.library" will automatically be enhanced.
-These are at least HippoPlayer and DeliTracker.
+These are at least HippoPlayer and DeliTracker. HippoPlayer
+also provides additional integration: output mode selection, 
+volume setting, scope display.
 
-Please note that reSID is very heavy on the CPU. I measured
+reSID
+-----
+
+reSID provides accurate, cycle exact emulation of both the 6581 
+and the 8580 SID chips, with filter support. It is the
+ultimate SID emulator.
+
+Note 1: reSID is very heavy on the CPU. I measured
 CPU usage of 50-80% on my A1200/060, depending on the tune.
 Your system may become unresponsive if it's not powerful enough.
 An FPU is not required. A 68040 will probably not be fast enough.
 
-Note 1: Samples will not be heard. This is because the
+Note 2: Samples will not be heard. This is because the
 samples have typically had some special handling in
 SID players and emulators. The playsid.library sample handling 
 is not used with reSID.
 
-Note 2: Sometimes the sound output may be noisy. This is
-sampling noise, result of the reSID "fast" method.
+Note 3: Sometimes the sound output may be noisy. This is
+sampling noise, result of the reSID "fast sampling" method.
 Unfortunately the better quality sampling options available 
-in reSID are too slow for the 060.
+in reSID are too slow for a 50 MHz 68060.
+
+reSID assembler port and integration: K-P Koljonen
 
 
-/K-P
+SIDBlaster
+----------
 
+SIDBlaster integration uses the Poseidon USB stack. 
+poseidon.library is needed.
 
+TODO
+
+SIDBlaster integration: Eriq
