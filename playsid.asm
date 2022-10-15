@@ -7561,6 +7561,25 @@ reSIDWorkerEntryPoint
     move.l  d0,reSIDLevel4Intr1Data
  endif
 
+    * Allocate four audio buffers with some extra to allow
+    * overwrites in case doing long word writes.
+    move.l  #(SAMPLES_PER_HALF_FRAME+16)*4,d0
+    move.l  #MEMF_CHIP!MEMF_CLEAR,d1
+    jsr     _LVOAllocMem(a6)
+    tst.l   d0
+    beq     .x
+
+    move.l  d0,a0
+    lea     buffer1p(pc),a1
+    move.l  a0,(a1)+
+    lea     SAMPLES_PER_HALF_FRAME+16(a0),a0
+    move.l  a0,(a1)+
+    lea     SAMPLES_PER_HALF_FRAME+16(a0),a0
+    move.l  a0,(a1)+
+    lea     SAMPLES_PER_HALF_FRAME+16(a0),a0
+    move.l  a0,(a1)+
+
+
     moveq   #-1,d0
     jsr     _LVOAllocSignal(a6)
     move.b  d0,reSIDAudioSignal
@@ -7664,6 +7683,14 @@ reSIDWorkerEntryPoint
     move.b   reSIDExitSignal(pc),d0
     jsr     _LVOFreeSignal(a6)
 
+    lea     buffer1p(pc),a2
+    tst.l   (a2)
+    beq.b   .y
+    move.l  (a2),a1
+    clr.l   (a2)
+    move.l  #(SAMPLES_PER_HALF_FRAME+16)*4,d0
+    jsr     _LVOFreeMem(a6)
+.y
     jsr     _LVOForbid(a6)
     clr.b   workerStatus
     rts
@@ -7678,10 +7705,10 @@ reSIDWorkerEntryPoint
 workerStatus        dc.b    0
     even
 
-buffer1p    dc.l    buffer1
-            dc.l    buffer1b
-buffer2p    dc.l    buffer2
-            dc.l    buffer2b
+buffer1p    dc.l    0
+            dc.l    0
+buffer2p    dc.l    0
+            dc.l    0
 
 switchBuffers:
     movem.l buffer1p(pc),d0/d1
@@ -7876,10 +7903,3 @@ regDump
     * time(w),reg(b),data(b)
     ds.l    10000
   endif
-
-    section bss2,bss_c
-
-buffer1     ds.b    SAMPLES_PER_HALF_FRAME
-buffer2     ds.b    SAMPLES_PER_HALF_FRAME
-buffer1b    ds.b    SAMPLES_PER_HALF_FRAME
-buffer2b    ds.b    SAMPLES_PER_HALF_FRAME
