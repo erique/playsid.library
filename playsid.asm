@@ -26,21 +26,17 @@ ENABLE_REGDUMP  = 0
 ENABLE_LEV4PLAY = 1
   endif
 
-* Constants
+* Period should be divisible by 64 for bug free 14-bit output
+PAULA_PERIOD=128    
 PAL_CLOCK=3546895
-SAMPLING_FREQ=27928 * Maps to period 127, A-3
-PAULA_PERIOD=(PAL_CLOCK+SAMPLING_FREQ/2)/SAMPLING_FREQ
-SAMPLES_PER_FRAME set (SAMPLING_FREQ+25)/50
-SAMPLES_PER_HALF_FRAME set (SAMPLING_FREQ+50)/100
-; Must be even for Paula 
- ifne SAMPLES_PER_HALF_FRAME&1
-SAMPLES_PER_HALF_FRAME set SAMPLES_PER_HALF_FRAME+1
- endif
- 
-; p=c/f
-; pf=c
-; f=c/p
- 
+* Sampling frequency: PAL_CLOCK/PAULA_PERIOD=27710.1171875
+* Samples per 1/100s = 277.10117
+* Samples per 1/100s as 22.10 FP = 283751.59808
+SAMPLES_PER_FRAME = 283752
+* Output buffer size 
+SAMPLE_BUFFER_SIZE = 277+1     * 277.101171875
+
+
 *=======================================================================*
 *	INCLUDES							*
 *=======================================================================*
@@ -1105,30 +1101,7 @@ InitSID		movem.l	a2-a3,-(a7)
 		move.w	#-1,ch_SamPer(a0)
 		move.w	#4,ch_SamLen(a0)
 
-    movem.l d0-a6,-(sp)
-    move.l  psb_reSID(a6),a0
-    jsr     sid_constructor
-
-    move.l  #985248,d0
-    moveq   #SAMPLING_METHOD_SAMPLE_FAST,d1
-    move.l  #SAMPLING_FREQ,d2
-    move.l  psb_reSID(a6),a0
-    jsr     sid_set_sampling_parameters
-
-	move.l  psb_reSID(a6),a0
-    jsr     sid_reset
-
-    moveq   #CHIP_MODEL_MOS6581,d0
-    cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
-    beq.b   .1
-    cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
-    bne.b   .1
-    moveq   #CHIP_MODEL_MOS8580,d0
-.1
-    move.l  psb_reSID(a6),a0
-    jsr     sid_set_chip_model
-    movem.l (sp)+,d0-a6
-  
+        jsr     initRESID
   
     	movem.l	(a7)+,a2-a3
 		rts
@@ -7478,13 +7451,53 @@ _PlaySidBase	ds.l	1
 *   a0 = audio buffer pointer
 @GetRESIDAudioBuffer
     move.l  buffer1p,a0
-    move.w  #SAMPLES_PER_HALF_FRAME,d0
+    move.w  #SAMPLE_BUFFER_SIZE,d0
     move.w  #PAULA_PERIOD,d1
     rts
 
         include resid-68k.s
 
         section    reSID2,code
+
+* Initialize reSID, safe to call whenever.
+* In:
+*    a6 = PlaySID base
+initRESID
+    movem.l d0-a6,-(sp)
+    move.l  psb_reSID(a6),a0
+    jsr     sid_constructor
+
+    move.l  #985248,d0
+    moveq   #SAMPLING_METHOD_SAMPLE_FAST,d1
+    move.l  #PAULA_PERIOD,d2
+    move.l  psb_reSID(a6),a0
+    jsr     sid_set_sampling_parameters_paula
+
+    * Calculate how many cycles are needed per a 1/100s 
+    * frame as accurately as possible.
+    * SAMPLES_PER_FRAME is 22.10 FP 
+    * sid_cycles_per_sample is 16.16 FP
+    move.l  #SAMPLES_PER_FRAME,d0
+    mulu.l  sid_cycles_per_sample(a0),d1:d0
+    * Shift by 16 and 10 to get the FP to 
+    * the correct position
+    divu.l  #1<<(16+10),d1:d0
+    move.l  d0,cyclesPerFrame
+
+    move.l  psb_reSID(a6),a0
+    jsr     sid_reset
+
+    moveq   #CHIP_MODEL_MOS6581,d0
+    cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+    beq.b   .1
+    cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+    bne.b   .1
+    moveq   #CHIP_MODEL_MOS8580,d0
+.1
+    move.l  psb_reSID(a6),a0
+    jsr     sid_set_chip_model
+    movem.l (sp)+,d0-a6
+    rts
 
 
 createReSIDWorkerTask:
@@ -7563,20 +7576,21 @@ reSIDWorkerEntryPoint
 
     * Allocate four audio buffers with some extra to allow
     * overwrites in case doing long word writes.
-    move.l  #(SAMPLES_PER_HALF_FRAME+16)*4,d0
+    move.l  #(SAMPLE_BUFFER_SIZE+16)*4,d0
     move.l  #MEMF_CHIP!MEMF_CLEAR,d1
     jsr     _LVOAllocMem(a6)
     tst.l   d0
     beq     .x
 
     move.l  d0,a0
+    move.l  a0,bufferMemoryPtr
     lea     buffer1p(pc),a1
     move.l  a0,(a1)+
-    lea     SAMPLES_PER_HALF_FRAME+16(a0),a0
+    lea     SAMPLE_BUFFER_SIZE+16(a0),a0
     move.l  a0,(a1)+
-    lea     SAMPLES_PER_HALF_FRAME+16(a0),a0
+    lea     SAMPLE_BUFFER_SIZE+16(a0),a0
     move.l  a0,(a1)+
-    lea     SAMPLES_PER_HALF_FRAME+16(a0),a0
+    lea     SAMPLE_BUFFER_SIZE+16(a0),a0
     move.l  a0,(a1)+
 
 
@@ -7683,12 +7697,12 @@ reSIDWorkerEntryPoint
     move.b   reSIDExitSignal(pc),d0
     jsr     _LVOFreeSignal(a6)
 
-    lea     buffer1p(pc),a2
+    lea     bufferMemoryPtr(pc),a2
     tst.l   (a2)
     beq.b   .y
     move.l  (a2),a1
     clr.l   (a2)
-    move.l  #(SAMPLES_PER_HALF_FRAME+16)*4,d0
+    move.l  #(SAMPLE_BUFFER_SIZE+16)*4,d0
     jsr     _LVOFreeMem(a6)
 .y
     jsr     _LVOForbid(a6)
@@ -7704,6 +7718,12 @@ reSIDWorkerEntryPoint
     ;-1 = exiting
 workerStatus        dc.b    0
     even
+
+cyclesPerFrame
+            dc.l    0
+
+bufferMemoryPtr
+            dc.l    0
 
 buffer1p    dc.l    0
             dc.l    0
@@ -7732,13 +7752,12 @@ switchBuffers:
 fillBuffer:
     lea     Sid,a0
     movem.l buffer1p(pc),a1/a2
-    move.l  #100000,d0      * cycle limit, set high enough
-    * bytes to get
-    move.l  #SAMPLES_PER_HALF_FRAME,d1
+    move.l  cyclesPerFrame(pc),d0
+    * buffer size limit
+    move.l  #SAMPLE_BUFFER_SIZE,d1
     jsr     sid_clock_fast14
     * d0 = bytes received, make words
     lsr     #1,d0
-
     move    d0,$a4+$dff000   * words
     move    d0,$d4+$dff000   * words
     move    d0,$b4+$dff000   * words
@@ -7750,11 +7769,12 @@ fillBuffer:
 fillBuffer:
     lea     Sid,a0
     move.l  buffer1p(pc),a1
-    move.l  #100000,d0      * cycle limit, set high enough
-    * bytes to get
-    move.l  #SAMPLES_PER_HALF_FRAME,d1
+    move.l  cyclesPerFrame(pc),d0
+    * buffer size limit
+    move.l  #SAMPLE_BUFFER_SIZE,d1
     jsr     sid_clock_fast8
     * d0 = bytes received, make words
+    * rounds down, so may discard one byte
     lsr     #1,d0
 
     move    d0,$a4+$dff000   * words
@@ -7836,7 +7856,7 @@ reSIDLevel1Handler:
 .bob2 dc.w   $f0f
 
 reSIDAudioSignal    dc.b    0
-reSIDExitSignal    dc.b    0
+reSIDExitSignal     dc.b    0
     even
 
   ifne ENABLE_REGDUMP
