@@ -6,6 +6,8 @@
 *									*
 *=======================================================================*
 
+* reSID settings and constants
+
 ; Set to 1 to enable the Paula 14-bit output
   ifnd ENABLE_14BIT
 ENABLE_14BIT    = 0
@@ -1101,8 +1103,13 @@ InitSID		movem.l	a2-a3,-(a7)
 		move.w	#-1,ch_SamPer(a0)
 		move.w	#4,ch_SamLen(a0)
 
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .2
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        bne.b   .1
+.2
         jsr     initRESID
-  
+.1  
     	movem.l	(a7)+,a2-a3
 		rts
 .Clear
