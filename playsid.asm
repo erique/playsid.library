@@ -7608,7 +7608,7 @@ reSIDWorkerEntryPoint
     lea     reSIDLevel4Intr1,a1
     moveq   #INTB_AUD0,d0		; Allocate Level 4
     jsr     _LVOSetIntVector(a6)
-    move.l  d0,.oldVecAud0
+    move.l  d0,oldVecAud0
 
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
@@ -7635,12 +7635,11 @@ reSIDWorkerEntryPoint
     move    #0,$c8+$dff000   
   endif
 
-    movem.l buffer1p(pc),d0/d1
-    move.l  d0,$a0+$dff000 
-    move.l  d1,$d0+$dff000 
-    move.l  d0,$b0+$dff000 
-    move.l  d1,$c0+$dff000 
-
+    movem.l buffer1p(pc),a1/a3
+    move.l  a1,$a0+$dff000 
+    move.l  a2,$d0+$dff000 
+    move.l  a1,$b0+$dff000 
+    move.l  a2,$c0+$dff000 
     bsr     fillBuffer
     
     bsr     dmawait     * probably not needed
@@ -7684,6 +7683,8 @@ reSIDWorkerEntryPoint
     pop     a6
   endif
     bra     .loop
+.bob1 dc.w   $ff0
+
 .x
 
     move    #$f,dmacon+$dff000
@@ -7691,10 +7692,10 @@ reSIDWorkerEntryPoint
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
 
     moveq	#INTB_AUD0,d0
-    move.l  .oldVecAud0(pc),a1
+    move.l  oldVecAud0(pc),a1
     move.l  4.w,a6
     jsr     _LVOSetIntVector(a6)
-    move.l  d0,.oldVecAud0
+    move.l  d0,oldVecAud0
     
     move.b   reSIDAudioSignal(pc),d0
     jsr     _LVOFreeSignal(a6)
@@ -7713,49 +7714,26 @@ reSIDWorkerEntryPoint
     clr.b   workerStatus
     rts
 
-.oldVecAud0     dc.l    0
 
-.bob1 dc.w   $ff0
 
-    ;0  = not running
-    ;1  = running
-    ;-1 = exiting
-workerStatus        dc.b    0
-    even
-
-cyclesPerFrame
-            dc.l    0
-
-bufferMemoryPtr
-            dc.l    0
-
-buffer1p    dc.l    0
-            dc.l    0
-buffer2p    dc.l    0
-            dc.l    0
-
-switchBuffers:
-    movem.l buffer1p(pc),d0/d1
-    movem.l buffer2p(pc),d2/d3
-    movem.l d0/d1,buffer2p
-    movem.l d2/d3,buffer1p
-    rts
 
  switchAndFillBuffer:
-   * Switch buffers and fill
-    bsr     switchBuffers
-    movem.l buffer1p(pc),d0/d1
-    move.l  d0,$a0+$dff000 
-    move.l  d1,$d0+$dff000 
-    move.l  d0,$b0+$dff000 
-    move.l  d1,$c0+$dff000 
-    ;bra     fillBuffer
+
+    * Switch buffers
+    movem.l buffer1p(pc),d0/d1/a1/a2
+    movem.l d0/d1,buffer2p
+    movem.l a1/a2,buffer1p
+
+    move.l  a1,$a0+$dff000 
+    move.l  a2,$d0+$dff000 
+    move.l  a1,$b0+$dff000 
+    move.l  a2,$c0+$dff000 
  
   ifne ENABLE_14BIT
 
 fillBuffer:
     lea     Sid,a0
-    movem.l buffer1p(pc),a1/a2
+    ;movem.l buffer1p(pc),a1/a2
     move.l  cyclesPerFrame(pc),d0
     * buffer size limit
     move.l  #SAMPLE_BUFFER_SIZE,d1
@@ -7772,7 +7750,7 @@ fillBuffer:
 
 fillBuffer:
     lea     Sid,a0
-    move.l  buffer1p(pc),a1
+    ;move.l  buffer1p(pc),a1
     move.l  cyclesPerFrame(pc),d0
     * buffer size limit
     move.l  #SAMPLE_BUFFER_SIZE,d1
@@ -7789,42 +7767,6 @@ fillBuffer:
 
   endif
   
-dmawait
-	movem.l d0/d1,-(sp)
-	moveq	#12-1,d1
-.d	move.b	$dff006,d0
-.k	cmp.b	$dff006,d0
-	beq.b	.k
-	dbf	d1,.d
-	movem.l (sp)+,d0/d1
-	rts
-
-reSIDTask:   dc.l    0
-
-reSIDLevel4Intr1	
-        dc.l	0		; Audio Interrupt
-        dc.l	0
-        dc.b	2
-        dc.b	0
-        dc.l	reSIDLevel4Name1
-reSIDLevel4Intr1Data:
-        dc.l	0		            ;is_Data
-        dc.l	reSIDLevel4Handler1	;is_Code
-
-reSIDLevel4Name1
-    dc.b    "reSID Audio",0
-    even
-
-reSIDLevel1Intr
-      	dc.l	0
-        dc.l	0
-        dc.b	2
-        dc.b	0
-        dc.l    reSIDLevel4Name1    
-        dc.l	0
-        dc.l	reSIDLevel1Handler
-
-
 * a1 = is_data 
 * a6 = execbase
 reSIDLevel4Handler1
@@ -7852,16 +7794,67 @@ reSIDLevel4Handler1
 
 reSIDLevel1Handler:
    	movem.l d2-d7/a2-a4/a6,-(sp)
-    bsr     switchAndFillBuffer
+    bsr.b   switchAndFillBuffer
    	movem.l (sp)+,d2-d7/a2-a4/a6
     moveq   #0,d0
     rts
 
-.bob2 dc.w   $f0f
 
-reSIDAudioSignal    dc.b    0
-reSIDExitSignal     dc.b    0
+dmawait
+	movem.l d0/d1,-(sp)
+	moveq	#12-1,d1
+.d	move.b	$dff006,d0
+.k	cmp.b	$dff006,d0
+	beq.b	.k
+	dbf	d1,.d
+	movem.l (sp)+,d0/d1
+	rts
+
+    ;0  = not running
+    ;1  = running
+    ;-1 = exiting
+workerStatus      dc.b    0
+                  even
+cyclesPerFrame
+                  dc.l    0
+bufferMemoryPtr
+                  dc.l    0
+
+buffer1p          dc.l    0
+                  dc.l    0
+buffer2p          dc.l    0
+                  dc.l    0
+
+reSIDTask:        dc.l    0
+reSIDAudioSignal  dc.b    0
+reSIDExitSignal   dc.b    0
+oldVecAud0        dc.l    0
+ 
+
+reSIDLevel4Intr1	
+        dc.l	0		; Audio Interrupt
+        dc.l	0
+        dc.b	2
+        dc.b	0
+        dc.l	reSIDLevel4Name1
+reSIDLevel4Intr1Data:
+        dc.l	0		            ;is_Data
+        dc.l	reSIDLevel4Handler1	;is_Code
+
+reSIDLevel4Name1
+    dc.b    "reSID Audio",0
     even
+
+reSIDLevel1Intr
+      	dc.l	0
+        dc.l	0
+        dc.b	2
+        dc.b	0
+        dc.l    reSIDLevel4Name1    
+        dc.l	0
+        dc.l	reSIDLevel1Handler
+
+
 
   ifne ENABLE_REGDUMP
 saveDump
