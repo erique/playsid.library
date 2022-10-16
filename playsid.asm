@@ -277,18 +277,16 @@ AutoInitFunction
         move.l  a5,a6
         bsr     SetDefaultOperatingMode
 
-        cmp.b   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
-        bne.b   .blasterOk
+        cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
+        bne.b   .noBlaster
         bsr     start_sid_blaster
 		tst.l	d0
-        beq.b   .blasterOk
-        moveq	#SID_NOSIDBLASTER,D0
-        bra     .Exit
-.blasterOk
+        bne.b   .Exit
+.noBlaster
 
         bsr	    AllocEmulMem
 		tst.l	d0
-		bne 	.Exit
+		bne.b 	.Exit
 .MemOK		
         bsr	CheckCPU
 		bsr	Make6502Emulator
@@ -298,7 +296,6 @@ AutoInitFunction
 		bsr	MakeEnvelope
 		move.w	#PM_STOP,psb_PlayMode(a6)
 		move.w	#1,psb_EmulResourceFlag(a6)
-
 
         * Default volume
         moveq   #$40,d0
@@ -4153,7 +4150,7 @@ start_sid_blaster:
 	jsr	_sid_init
 	tst.l	d0
 	bne.b	.ok
-	moveq.l	#SID_LIBINUSE,d0
+	moveq.l	#SID_NOSIDBLASTER,d0
 	bra.b	.fail
 .ok	clr.l	d0
 .fail	movem.l	(sp)+,d1-a6
