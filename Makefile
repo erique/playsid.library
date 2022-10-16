@@ -4,6 +4,7 @@ VASM ?= $(VBCC)/bin/vasmm68k_mot
 VASM_FLAGS := -Fhunk -kick1hunks -quiet -m68060 -nosym -showcrit -no-opt -I $(VBCC)/m68k-amigaos/ndk-include/
 
 GCC ?= $(VBCC)/bin/m68k-amigaos-gcc
+STRIP ?= $(VBCC)/bin/m68k-amigaos-strip
 CFLAGS := -O2 -g -noixemul -m68060 --omit-frame-pointer -DPLAYSID
 
 SOURCE   = playsid.asm 
@@ -27,6 +28,7 @@ sidblast.o: sidblast.c | Makefile
 
 playsid.library: playsid.o sidblast.o | Makefile
 	$(GCC) -m68060 -nostdlib -g -Wl,-Map,playsid.map,--cref $^ -o $@
+	$(STRIP) $@
 
 test_blaster: test_blaster.c sidblast.c
 	$(GCC) -O2 -g -noixemul -m68060 --omit-frame-pointer -Wl,-Map,test_blaster.map,--cref $^ -o $@
