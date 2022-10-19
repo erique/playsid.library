@@ -7635,7 +7635,7 @@ reSIDWorkerEntryPoint
     move    #0,$c8+$dff000   
   endif
 
-    movem.l buffer1p(pc),a1/a3
+    movem.l buffer1p(pc),a1/a2
     move.l  a1,$a0+$dff000 
     move.l  a2,$d0+$dff000 
     move.l  a1,$b0+$dff000 
