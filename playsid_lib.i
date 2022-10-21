@@ -48,6 +48,7 @@ LIBRARIES_PLAYSID_LIB_I SET	1
     LIBDEF _LVOSetRESIDChipModel
     LIBDEF _LVOSetRESIDFilter
     LIBDEF _LVOGetRESIDAudioBuffer
+    LIBDEF _LVOMeasureRESIDPerformance
 
 CALLPLAYSID	MACRO
 	move.l	_PlaySidBase,a6

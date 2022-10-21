@@ -61,6 +61,8 @@ SAMPLE_BUFFER_SIZE = 277+1     * 277.101171875
 		include	playsid_libdefs.i
     	include	dos/dosextens.i
        	include	dos/var.i
+        include lvo/timer_lib.i
+        include devices/timer.i
 	LIST
 *=======================================================================*
 *	EXTERNAL REFERENCES						*
@@ -146,6 +148,7 @@ AutoInitVectors	;***** Standard System Routines *****
         dc.l    @SetRESIDChipModel
         dc.l    @SetRESIDFilter
         dc.l    @GetRESIDAudioBuffer
+        dc.l    @MeasureRESIDPerformance
 
 		dc.l	-1
 
@@ -7809,6 +7812,219 @@ dmawait
 	dbf	d1,.d
 	movem.l (sp)+,d0/d1
 	rts
+
+
+@MeasureRESIDPerformance:
+    movem.l d2-d7/a2-a6,-(sp)
+    moveq   #-1,d7
+    move.l	4.w,a6
+    move	LIB_VERSION(a6),d0
+    cmp     #36,d0
+    blo     .x
+
+    lea     .timerDeviceName(pc),a0
+    moveq	#UNIT_ECLOCK,d0
+    moveq	#0,d1
+    lea     timerRequest(pc),a1
+    jsr	    _LVOOpenDevice(a6)		; d0=0 if success
+    tst.l	d0
+    bne     .error
+
+    moveq   #0,d6
+    move.l  #(2*SAMPLE_BUFFER_SIZE),d0
+    move.l  #MEMF_CHIP!MEMF_CLEAR,d1
+    jsr     _LVOAllocMem(a6)
+    tst.l   d0
+    beq     .error2
+    move.l  d0,d6
+
+    lea     Sid,a0
+    jsr	    sid_constructor
+    
+    move.l  #985248,d0
+    moveq   #SAMPLING_METHOD_SAMPLE_FAST,d1
+    move.l  #PAULA_PERIOD,d2
+    lea     Sid,a0
+    jsr     sid_set_sampling_parameters_paula
+
+    move.l  #SAMPLES_PER_FRAME,d0
+    lea     Sid,a0
+    mulu.l  sid_cycles_per_sample(a0),d1:d0
+    * Shift by 16 and 10 to get the FP to 
+    * the correct position
+    divu.l  #1<<(16+10),d1:d0
+    move.l  d0,d5
+
+    move.l  4.w,a6
+    jsr     _LVOForbid(a6)
+
+    lea     clockStart(pc),a0
+    move.l	IO_DEVICE+timerRequest(pc),a6
+    jsr     _LVOReadEClock(a6)
+
+    move.l  d6,-(sp)
+    move.l  d6,a1
+    move.l  d5,d0  * cycles
+    add.l   d0,d0   * double it for more accurate measurement
+    move.l  #2*SAMPLES_PER_FRAME,d1 * buffer limit
+    lea     Sid,a0
+    jsr     sid_clock_fast8
+    move.l  (sp)+,d6
+
+    lea     clockEnd(pc),a0
+    move.l	IO_DEVICE+timerRequest(pc),a6
+    jsr     _LVOReadEClock(a6)
+
+    move.l  d0,-(sp)
+    move.l  4.w,a6
+    jsr     _LVOPermit(a6)
+    move.l  (sp)+,d0
+
+     * D0 will be 709379 for PAL.
+	move.l	d0,d2
+	; d2 = ticks/s
+	divu	#1000,d2
+	; d2 = ticks/10ms
+	ext.l	d2
+	
+    ; Calculate diff between start and stop times
+	; in 64-bits
+	move.l	EV_HI+clockEnd(pc),d0
+	move.l	EV_LO+clockEnd(pc),d1
+	move.l	EV_HI+clockStart(pc),d3
+	sub.l	EV_LO+clockStart(pc),d1
+	subx.l	d3,d0
+
+	; Turn the diff into millisecs
+	; Divide d0:d1 by d2
+	divu.l  d2,d0:d1
+   ; d0:d1 is now d0:d1/d2
+	; take the lower 32-bits
+    move.l  d1,d7
+
+    lea     Sid,a0
+    jsr     sid_reset
+
+.error2
+    lea     timerRequest(pc),a1
+    move.l  4.w,a6
+    jsr     _LVOCloseDevice(a6)
+
+    tst.l   d6
+    beq.b   .x
+    move.l  d6,a1
+    move.l  #(2*SAMPLE_BUFFER_SIZE),d0
+    jsr     _LVOFreeMem(a6)
+.x
+    move.l  d7,d0
+    movem.l (sp)+,d2-d7/a2-a6
+    rts
+.error
+    bra     .x
+
+
+.timerDeviceName dc.b	"timer.device",0
+	even
+
+
+
+* Frame $b from "Advanced Chemistry"
+pokeSound:
+    move.b  #$00,d0
+    move.b  #$15,d1 * fc_lo
+    bsr     .w
+;   000b 1601 000b 17f1 
+    move.b  #$01,d0
+    move.b  #$16,d1 * fc_hi
+    bsr     .w
+    move.b  #$f1,d0 * res=f, filter voice 1
+    move.b  #$17,d1 * res_filt
+    bsr     .w
+;00000420:   186f   0507   06a2   0200  ...o............
+    move.b  #$6f,d0 * filter mode=6 (hp+bp), vol=f
+    move.b  #$18,d1 * mode_vol
+    bsr     .w
+    move.b  #$07,d0 * attack=0, decay=7
+    move.b  #$05,d1 * v1 attack decay
+    bsr     .w
+    move.b  #$a2,d0 * sustain=a, release=2
+    move.b  #$06,d1 * v1 sustain release
+    bsr     .w
+    move.b  #$00,d0
+    move.b  #$02,d1 * v1 pw lo
+    bsr     .w
+;00000430:   0387   0043   0103   0441  .......C.......A
+    move.b  #$87,d0
+    move.b  #$03,d1 * v1 pw hi
+    bsr     .w
+    move.b  #$43,d0
+    move.b  #$00,d1 * v1 freq lo
+    bsr     .w
+    move.b  #$03,d0
+    move.b  #$01,d1 * v1 freq hi
+    bsr     .w
+    move.b  #$41,d0 * gate, pulse
+    move.b  #$04,d1 * v1 control
+    bsr     .w
+;00000440:   0c00   0d64   0900   0a84  .......d........
+    move.b  #$00,d0 * attack=0, decay=0
+    move.b  #$0c,d1 * v2 attack decay
+    bsr     .w
+    move.b  #$64,d0 * sustain=6, release=4
+    move.b  #$0d,d1 * v2 sustain release
+    bsr     .w
+    move.b  #$00,d0
+    move.b  #$09,d1 * v2 pw lo
+    bsr     .w
+    move.b  #$84,d0
+    move.b  #$0a,d1 * v2 pw hi
+    bsr     .w
+;00000450:   0714   0827   0b41   1300  .......'...A....
+    move.b  #$14,d0
+    move.b  #$07,d1 * v2 freq lo
+    bsr     .w
+    move.b  #$27,d0
+    move.b  #$08,d1 * v2 freq hi
+    bsr     .w
+    move.b  #$41,d0 * gate, pulse
+    move.b  #$0b,d1 * v2 control
+    bsr     .w
+    move.b  #$00,d0 * attack=0, decay=0
+    move.b  #$13,d1 * v3 attack decay
+    bsr     .w
+;00000460:   14c2   10a0   1180   0e8d  ................
+    move.b  #$c2,d0 * sustain=c, release=2
+    move.b  #$14,d1 * v3 sustain release
+    bsr     .w
+    move.b  #$a0,d0
+    move.b  #$10,d1 * v3 pw lo
+    bsr     .w
+    move.b  #$80,d0
+    move.b  #$11,d1 * v3 pw hi
+    bsr     .w
+    move.b  #$8d,d0
+    move.b  #$0e,d1 * v3 freq lo
+    bsr     .w
+;00000470:   0f3a   1241 
+    move.b  #$3a,d0
+    move.b  #$0f,d1 * v3 freq hi
+    bsr     .w
+    move.b  #$41,d0 * gate, pulse
+    move.b  #$12,d1 * v3 control 
+    bsr     .w
+    rts    
+
+.w  lea     Sid,a0
+    jmp     sid_write
+
+
+
+
+
+timerRequest	        ds.b    IOTV_SIZE
+clockStart              ds.b    EV_SIZE
+clockEnd                ds.b    EV_SIZE
+
 
     ;0  = not running
     ;1  = running
