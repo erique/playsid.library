@@ -44,7 +44,8 @@ PAL_CLOCK=3546895
 SAMPLES_PER_FRAME = 141876
 
 * Output buffer size 
-SAMPLE_BUFFER_SIZE = 277+1     * 277.101171875
+*SAMPLE_BUFFER_SIZE = 277+1  * 277.101171875
+SAMPLE_BUFFER_SIZE = 140     * 138.550585
 
 
 *=======================================================================*
@@ -396,6 +397,7 @@ SetDefaultOperatingMode:
 		clr.w	psb_EmulResourceFlag(a6)
         * Undefine operating mode so that will be determined again the next time.
         move.w  #-1,psb_OperatingMode(a6)
+        jsr     resetRESID
 .Exit		
 
         move.l  psb_DOSBase(a6),a1
@@ -686,6 +688,8 @@ AllocEmulMem
 		beq.s	.Error
 		ALLOC	psb_SampleMem(a6),SAMPLEMEM_SIZE,MEMF_CHIP
 		beq.s	.Error
+        jsr     allocRESIDMemory
+        beq.s   .Error
 		moveq	#0,d0
 		rts
 
@@ -700,6 +704,7 @@ FreeEmulMem
 		FREE	psb_C64Mem(a6),C64MEM_SIZE
 		FREE	psb_EnvelopeMem(a6),ENVELOPEMEM_SIZE
 		FREE	psb_SampleMem(a6),SAMPLEMEM_SIZE
+        jsr     freeRESIDMemory
 		rts
 
 *-----------------------------------------------------------------------*
@@ -7466,8 +7471,8 @@ _PlaySidBase	ds.l	1
 *   a0 = audio buffer pointer
 @GetRESIDAudioBuffer
     move.l  buffer1p,a0
-    move.w  #SAMPLE_BUFFER_SIZE,d0
-    move.w  #PAULA_PERIOD,d1
+    move.l  #SAMPLE_BUFFER_SIZE,d0
+    move.l  #PAULA_PERIOD,d1
     rts
 
         include resid-68k.s
@@ -7477,8 +7482,9 @@ _PlaySidBase	ds.l	1
 * Initialize reSID, safe to call whenever.
 * In:
 *    a6 = PlaySID base
+
 initRESID
-    movem.l d0-a6,-(sp)
+    movem.l d1-a6,-(sp)
     move.l  psb_reSID(a6),a0
     jsr     sid_constructor
 
@@ -7511,9 +7517,59 @@ initRESID
 .1
     move.l  psb_reSID(a6),a0
     jsr     sid_set_chip_model
-    movem.l (sp)+,d0-a6
+
+    movem.l (sp)+,d1-a6
     rts
 
+* Out:
+*    d0 = 0: out of mem, non-1: ok
+allocRESIDMemory:
+    push   a6
+    cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+    beq.b   .z
+    cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+    bne.b   .y
+.z
+    * Allocate four audio buffers with some extra to allow
+    * overwrites in case doing long word writes.
+    move.l  #(SAMPLE_BUFFER_SIZE)*4,d0
+    move.l  #MEMF_CHIP!MEMF_CLEAR,d1
+    move.l  4.w,a6
+    jsr     _LVOAllocMem(a6)
+    tst.l   d0
+    beq     .x
+
+    move.l  d0,a0
+    move.l  a0,bufferMemoryPtr
+    lea     buffer1p(pc),a1
+    move.l  a0,(a1)+
+    lea     SAMPLE_BUFFER_SIZE(a0),a0
+    move.l  a0,(a1)+
+    lea     SAMPLE_BUFFER_SIZE(a0),a0
+    move.l  a0,(a1)+
+    lea     SAMPLE_BUFFER_SIZE(a0),a0
+    move.l  a0,(a1)+
+.y  moveq   #1,d0
+.x  tst.l   d0
+    pop     a6
+    rts
+
+resetRESID:
+    move.l  psb_reSID(a6),a0
+    jsr     sid_reset
+    rts
+
+freeRESIDMemory:
+    lea     bufferMemoryPtr(pc),a2
+    tst.l   (a2)
+    beq.b   .y
+    move.l  (a2),a1
+    clr.l   (a2)
+    move.l  #(SAMPLE_BUFFER_SIZE)*4,d0
+    move.l  4.w,a6
+    jsr     _LVOFreeMem(a6)
+.y
+    rts
 
 createReSIDWorkerTask:
   
@@ -7589,27 +7645,7 @@ reSIDWorkerEntryPoint
     move.l  d0,reSIDLevel4Intr1Data
  endif
 
-    * Allocate four audio buffers with some extra to allow
-    * overwrites in case doing long word writes.
-    move.l  #(SAMPLE_BUFFER_SIZE+16)*4,d0
-    move.l  #MEMF_CHIP!MEMF_CLEAR,d1
-    jsr     _LVOAllocMem(a6)
-    tst.l   d0
-    beq     .x
-
-    move.l  d0,a0
-    move.l  a0,bufferMemoryPtr
-    lea     buffer1p(pc),a1
-    move.l  a0,(a1)+
-    lea     SAMPLE_BUFFER_SIZE+16(a0),a0
-    move.l  a0,(a1)+
-    lea     SAMPLE_BUFFER_SIZE+16(a0),a0
-    move.l  a0,(a1)+
-    lea     SAMPLE_BUFFER_SIZE+16(a0),a0
-    move.l  a0,(a1)+
-
-
-    moveq   #-1,d0
+     moveq   #-1,d0
     jsr     _LVOAllocSignal(a6)
     move.b  d0,reSIDAudioSignal
     moveq   #-1,d0
@@ -7718,14 +7754,6 @@ reSIDWorkerEntryPoint
     move.b   reSIDExitSignal(pc),d0
     jsr     _LVOFreeSignal(a6)
 
-    lea     bufferMemoryPtr(pc),a2
-    tst.l   (a2)
-    beq.b   .y
-    move.l  (a2),a1
-    clr.l   (a2)
-    move.l  #(SAMPLE_BUFFER_SIZE+16)*4,d0
-    jsr     _LVOFreeMem(a6)
-.y
     jsr     _LVOForbid(a6)
     clr.b   workerStatus
     rts
