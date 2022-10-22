@@ -7560,6 +7560,7 @@ resetRESID:
     rts
 
 freeRESIDMemory:
+    push    a6
     lea     bufferMemoryPtr(pc),a2
     tst.l   (a2)
     beq.b   .y
@@ -7568,7 +7569,7 @@ freeRESIDMemory:
     move.l  #(SAMPLE_BUFFER_SIZE)*4,d0
     move.l  4.w,a6
     jsr     _LVOFreeMem(a6)
-.y
+.y  pop     a6
     rts
 
 createReSIDWorkerTask:
@@ -7872,7 +7873,7 @@ dmawait
     bne     .error
 
     moveq   #0,d6
-    move.l  #(2*SAMPLE_BUFFER_SIZE),d0
+    move.l  #(4*SAMPLE_BUFFER_SIZE),d0
     move.l  #MEMF_CHIP!MEMF_CLEAR,d1
     jsr     _LVOAllocMem(a6)
     tst.l   d0
@@ -7906,8 +7907,8 @@ dmawait
     move.l  d6,-(sp)
     move.l  d6,a1
     move.l  d5,d0  * cycles
-    add.l   d0,d0   * double it for more accurate measurement
-    move.l  #2*SAMPLES_PER_FRAME,d1 * buffer limit
+    lsl.l   #2,d0  * do 4 frames
+    move.l  #4*SAMPLES_PER_FRAME,d1 * buffer limit
     lea     Sid,a0
     jsr     sid_clock_fast8
     move.l  (sp)+,d6
@@ -7954,10 +7955,11 @@ dmawait
     tst.l   d6
     beq.b   .x
     move.l  d6,a1
-    move.l  #(2*SAMPLE_BUFFER_SIZE),d0
+    move.l  #(4*SAMPLE_BUFFER_SIZE),d0
     jsr     _LVOFreeMem(a6)
 .x
     move.l  d7,d0
+    moveq   #20,d1 * reference value
     movem.l (sp)+,d2-d7/a2-a6
     rts
 .error
