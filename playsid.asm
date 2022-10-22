@@ -32,9 +32,17 @@ ENABLE_LEV4PLAY = 1
 PAULA_PERIOD=128    
 PAL_CLOCK=3546895
 * Sampling frequency: PAL_CLOCK/PAULA_PERIOD=27710.1171875
+
+* reSID update frequency 100 Hz:
 * Samples per 1/100s = 277.10117
 * Samples per 1/100s as 22.10 FP = 283751.59808
-SAMPLES_PER_FRAME = 283752
+* SAMPLES_PER_FRAME = 283752
+
+* reSID update frequency 200 Hz:
+* Samples per 1/200s = 138.550585
+* Samples per 1/200s as 22.10 FP = 141875.79904
+SAMPLES_PER_FRAME = 141876
+
 * Output buffer size 
 SAMPLE_BUFFER_SIZE = 277+1     * 277.101171875
 
