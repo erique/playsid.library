@@ -10,7 +10,7 @@
 
 ; Set to 1 to enable the Paula 14-bit output
   ifnd ENABLE_14BIT
-ENABLE_14BIT    = 0
+ENABLE_14BIT    = 1
   endif
 
 ; Set to 1 to save SID register dump into a file
@@ -7686,7 +7686,12 @@ reSIDWorkerEntryPoint
     pop     a6
   endif
     bra     .loop
-.bob1 dc.w   $ff0
+.bob1
+  ifeq ENABLE_14BIT
+     dc.w   $ff0
+  else
+     dc.w   $0f0
+  endif
 
 .x
 
