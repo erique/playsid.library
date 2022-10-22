@@ -8133,7 +8133,7 @@ plainSaveFile:
 	jsr     _LVOClose(a6)
 .openErr 
 	move.l	d7,d0
-	movem.l (sp)+,d0-a6
+	movem.l (sp)+,d1-a6
 	rts
   endif
 
