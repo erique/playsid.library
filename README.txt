@@ -42,6 +42,9 @@ my A1200/060, depending on the tune. Your system may become unresponsive
 if it's not powerful enough. An FPU is not required. A 68040 
 will probably not be fast enough.
 
+reSID is updated at 200 Hz, this should allow double and quad speed 
+SID tunes to work acceptably.
+
 Samples will not be heard. This is because the samples have typically 
 had some special handling in SID players and emulators. The 
 playsid.library sample handling is not used with reSID.
