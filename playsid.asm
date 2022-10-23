@@ -1142,7 +1142,10 @@ InitSID		movem.l	a2-a3,-(a7)
 		clr.b	(a0)+
 		subq.w	#1,d0
 		bne.s	.Clear
-
+        
+        ;; Missing RTS added
+        rts
+       
 *-----------------------------------------------------------------------*
 InitSIDCont	move.l	psb_Chan1(a6),a0
 		move.w	#ch_SIZEOF,d0
@@ -1172,6 +1175,9 @@ InitSIDCont	move.l	psb_Chan1(a6),a0
 		clr.b	(a0)+
 		subq.w	#1,d0
 		bne.s	.Clear
+
+        ;; Missing RTS added
+        rts
 
 *-----------------------------------------------------------------------*
 CalcUpdateFreq
