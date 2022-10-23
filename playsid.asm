@@ -309,6 +309,13 @@ AutoInitFunction
 		move.w	#PM_STOP,psb_PlayMode(a6)
 		move.w	#1,psb_EmulResourceFlag(a6)
 
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .2
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        bne.b   .1
+.2
+        jsr     initRESID
+.1  
         * Default volume
         moveq   #$40,d0
         jsr     @SetVolume
@@ -1121,7 +1128,7 @@ InitSID		movem.l	a2-a3,-(a7)
         cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
         bne.b   .1
 .2
-        jsr     initRESID
+        jsr     resetRESID
 .1  
     	movem.l	(a7)+,a2-a3
 		rts
@@ -7442,6 +7449,11 @@ _PlaySidBase	ds.l	1
     opt o+
   endif
 
+        include resid-68k.s
+
+        section    reSID2,code
+
+
 @SetVolume 
     move    d0,psb_Volume(a6)
     move.l  psb_reSID(a6),a0
@@ -7449,21 +7461,20 @@ _PlaySidBase	ds.l	1
     rts
 
 * In:
-*   d0 = 0 for 6581, 1 for 8581
+*   d0 = 0 for 6581, 1 for 8580
 @SetRESIDChipModel
     move.l  psb_reSID(a6),a0
     moveq   #CHIP_MODEL_MOS6581,d0
     tst.b   d0
-    beq     sid_set_chip_model
+    beq     .1
     moveq   #CHIP_MODEL_MOS8580,d0
-    bra     sid_set_chip_model
+.1  jmp     sid_set_chip_model
 
 * In:
 *   d0 = 0 or 1
 @SetRESIDFilter
     move.l  psb_reSID(a6),a0
-    bsr     sid_enable_filter
-    rts
+    jmp     sid_enable_filter
 
 * Out:
 *   d0 = buffer length in bytes
@@ -7474,10 +7485,6 @@ _PlaySidBase	ds.l	1
     move.l  #SAMPLE_BUFFER_SIZE,d0
     move.l  #PAULA_PERIOD,d1
     rts
-
-        include resid-68k.s
-
-        section    reSID2,code
 
 * Initialize reSID, safe to call whenever.
 * In:
@@ -7530,8 +7537,7 @@ allocRESIDMemory:
     cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
     bne.b   .y
 .z
-    * Allocate four audio buffers with some extra to allow
-    * overwrites in case doing long word writes.
+    * Allocate four audio buffers for stereo 14-bit capability
     move.l  #(SAMPLE_BUFFER_SIZE)*4,d0
     move.l  #MEMF_CHIP!MEMF_CLEAR,d1
     move.l  4.w,a6
@@ -7556,8 +7562,7 @@ allocRESIDMemory:
 
 resetRESID:
     move.l  psb_reSID(a6),a0
-    jsr     sid_reset
-    rts
+    jmp     sid_reset
 
 freeRESIDMemory:
     push    a6
@@ -7577,6 +7582,7 @@ createReSIDWorkerTask:
     movem.l d0-a6,-(sp)
     tst.b   workerStatus
     bne     .x
+    move.l  a6,a5
 
     lea     workerTaskStruct,a0
     move.b  #NT_TASK,LN_TYPE(a0)
@@ -7594,7 +7600,17 @@ createReSIDWorkerTask:
     sub.l   a3,a3
     move.l  4.w,a6
     jsr     _LVOAddTask(a6)
-    addq.b  #1,workerStatus
+
+    * Wait here until the task is fully running
+    move.l  psb_DOSBase(a5),a6
+.loop
+    tst.b   workerStatus
+    bne     .y
+    moveq   #1,d1
+    jsr     _LVODelay(a6)
+    bra     .loop
+.y
+
 .x
     movem.l (sp)+,d0-a6
     rts
@@ -7633,7 +7649,6 @@ stopReSIDWorkerTask:
 
 * Playback task
 reSIDWorkerEntryPoint
-    addq.b  #1,workerStatus
 
     move.l  4.w,a6
     sub.l   a1,a1
@@ -7653,14 +7668,15 @@ reSIDWorkerEntryPoint
     jsr     _LVOAllocSignal(a6)
     move.b  d0,reSIDExitSignal
 
+    ; Stop all 
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
+    move.w  #DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
+
     lea     reSIDLevel4Intr1,a1
     moveq   #INTB_AUD0,d0		; Allocate Level 4
     jsr     _LVOSetIntVector(a6)
     move.l  d0,oldVecAud0
-
-    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
-    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
-    move.w  #DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
 
     * CH0 = high 8 bits - full volume
     * CH3 = low 6 bits  - volume 1
@@ -7683,13 +7699,7 @@ reSIDWorkerEntryPoint
     move    #0,$c8+$dff000   
   endif
 
-    movem.l buffer1p(pc),a1/a2
-    move.l  a1,$a0+$dff000 
-    move.l  a2,$d0+$dff000 
-    move.l  a1,$b0+$dff000 
-    move.l  a2,$c0+$dff000 
-    bsr     fillBuffer
-    
+    bsr     switchAndFillBuffer
     bsr     dmawait     * probably not needed
     
   ifne ENABLE_14BIT
@@ -7710,6 +7720,7 @@ reSIDWorkerEntryPoint
     ; fill A
     ; ... etc
 
+    addq.b  #1,workerStatus
 .loop
     move.l  4.w,a6
     moveq   #0,d0
