@@ -397,14 +397,20 @@ SetDefaultOperatingMode:
 		beq.s	.Exit
 		bsr	@StopSong
 		bsr	FreeEmulMem
-        cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
-        bne.b   .noBlaster
-        bsr     stop_sid_blaster
-.noBlaster
 		clr.w	psb_EmulResourceFlag(a6)
+
+        ; Safe to call even if not initialized:
+        bsr     stop_sid_blaster
+
+        ; Not safe if initRESID has not been called earlier:    
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .2
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        bne.b   .1
+.2      jsr     resetRESID
+.1  
         * Undefine operating mode so that will be determined again the next time.
         move.w  #-1,psb_OperatingMode(a6)
-        jsr     resetRESID
 .Exit		
 
         move.l  psb_DOSBase(a6),a1
