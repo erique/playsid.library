@@ -47,6 +47,17 @@ SAMPLES_PER_FRAME = 141876
 *SAMPLE_BUFFER_SIZE = 277+1  * 277.101171875
 SAMPLE_BUFFER_SIZE = 140     * 138.550585
 
+* Enable debug logging into a console window
+DEBUG = 0
+
+* Macro to print to debug console
+DPRINT  macro
+        ifne     DEBUG
+        jsr      desmsgDebugAndPrint
+        dc.b     \1,10,0
+        even
+        endc
+        endm
 
 *=======================================================================*
 *	INCLUDES							*
@@ -234,6 +245,8 @@ AutoInitFunction
 		clr.w	psb_TimeMinutes(a6)
 		clr.w	psb_UpdateCounter(a6)
 
+        DPRINT  "Open"
+
 .end		move.l	a6,d0
 		rts
 
@@ -241,6 +254,9 @@ AutoInitFunction
 		subq.w	#1,LIB_OPENCNT(a6)
 		bne.s	.1
 		bsr	@FreeEmulResource
+ if DEBUG
+        jsr     CloseDebug
+ endif
 		btst	#LIBB_DELEXP,psb_Flags(a6)
 		beq.s	.1
 		bsr.s	@Expunge
@@ -274,6 +290,7 @@ AutoInitFunction
 *	MAIN ROUTINES							*
 *=======================================================================*
 @AllocEmulResource
+        DPRINT  "AllocEmulResource"
 		;CALLEXEC Forbid
 		movem.l	d2-d7/a2-a6,-(a7)
 		tst.w	psb_EmulResourceFlag(a6)
@@ -391,6 +408,7 @@ SetDefaultOperatingMode:
 
 *-----------------------------------------------------------------------*
 @FreeEmulResource
+        DPRINT  "FreeEmulResource"
 		;CALLEXEC Forbid
 		movem.l	d2-d7/a2-a6,-(a7)
 		tst.w	psb_EmulResourceFlag(a6)
@@ -427,6 +445,10 @@ SetDefaultOperatingMode:
 *-----------------------------------------------------------------------*
 
 @SetOperatingMode
+ if DEBUG
+        ext.l   d0
+        DPRINT  "SetOperatingMode %ld"
+ endif
     	move.w	d0,psb_OperatingMode(a6)
 		rts
 
@@ -488,6 +510,7 @@ SetDefaultOperatingMode:
 
 *-----------------------------------------------------------------------*
 @SetModule	;CALLEXEC Forbid
+        DPRINT  "SetModule"
 		cmpi.l	#SID_HEADER,(a1)		; have header?
 		bne.s	.1
 		move.w	sidh_length(a1),d1		; skip header
@@ -515,6 +538,7 @@ SetDefaultOperatingMode:
 
 *-----------------------------------------------------------------------*
 @StartSong	;CALLEXEC Forbid
+        DPRINT  "StartSong"
 		movem.l	d2-d7/a2-a6,-(a7)
 		tst.w	psb_SongSetFlag(a6)
 		bne.s	.SongOK
@@ -590,6 +614,7 @@ SetDefaultOperatingMode:
 
 *-----------------------------------------------------------------------*
 @StopSong	;CALLEXEC Forbid
+        DPRINT  "StopSong"
 		movem.l	d2-d7/a2-a6,-(a7)
 		cmp.w	#PM_STOP,psb_PlayMode(a6)
 		beq.s	.Exit
@@ -609,6 +634,7 @@ SetDefaultOperatingMode:
 
 *-----------------------------------------------------------------------*
 @PauseSong	;CALLEXEC Forbid
+        DPRINT "PauseSong"
 		movem.l	d2-d7/a2-a6,-(a7)
 		cmp.w	#PM_PLAY,psb_PlayMode(a6)
 		bne.s	.Exit
@@ -624,6 +650,7 @@ SetDefaultOperatingMode:
 
 *-----------------------------------------------------------------------*
 @ContinueSong	;CALLEXEC Forbid
+        DPRINT "ContinueSong"
 		movem.l	d2-d7/a2-a6,-(a7)
 		cmp.w	#PM_PAUSE,psb_PlayMode(a6)
 		beq.s	.PauseOK
@@ -691,6 +718,7 @@ SetDefaultOperatingMode:
 
 *-----------------------------------------------------------------------*
 AllocEmulMem
+        DPRINT "AllocEmulMem"
 		ALLOC	psb_PrgMem(a6),PRGMEM_SIZE,MEMF_PUBLIC
 		beq	.Error
 		ALLOC	psb_MMUMem(a6),MMUMEM_SIZE,MEMF_PUBLIC
@@ -712,6 +740,7 @@ AllocEmulMem
 
 *-----------------------------------------------------------------------*
 FreeEmulMem
+        DPRINT  "FreeEmulMem"
 		FREE	psb_PrgMem(a6),PRGMEM_SIZE
 		FREE	psb_MMUMem(a6),MMUMEM_SIZE
 		FREE	psb_C64Mem(a6),C64MEM_SIZE
@@ -743,7 +772,9 @@ DisplayRequest
 .Exit		rts
 
 *-----------------------------------------------------------------------*
-Init64		movem.l	d2-d7,-(a7)
+Init64	
+        DPRINT "Init64"
+        movem.l	d2-d7,-(a7)
 		move.w	psb_SongTune(a6),d0
 		moveq	#$00,d1
 		moveq	#$00,d2
@@ -1066,7 +1097,9 @@ InitSpeed
 		rts
 
 *-----------------------------------------------------------------------*
-InitSID		movem.l	a2-a3,-(a7)
+InitSID		
+        DPRINT "InitSID"
+        movem.l	a2-a3,-(a7)
 		move.l	psb_Enve1(a6),a0
 		move.w	#env_SIZEOF,d0
 		bsr	.Clear
@@ -4180,22 +4213,6 @@ writeSIDRegister:
 
 *-----------------------------------------------------------------------*
 
-start_sid_blaster:
-	movem.l	d1-a6,-(sp)
-	jsr	_sid_init
-	tst.l	d0
-	bne.b	.ok
-	moveq.l	#SID_NOSIDBLASTER,d0
-	bra.b	.fail
-.ok	clr.l	d0
-.fail	movem.l	(sp)+,d1-a6
-	rts
-
-stop_sid_blaster:
-	movem.l	d0-a6,-(sp)
-	jsr	_sid_exit
-	movem.l	(sp)+,d0-a6
-	rts
 
 write_sid_reg:
 	movem.l	d0-a6,-(sp)
@@ -4205,6 +4222,26 @@ write_sid_reg:
 	move.l	d6,d1
 	jsr	_sid_write_reg
     moveq   #1,d0
+	movem.l	(sp)+,d0-a6
+	rts
+
+start_sid_blaster:
+    DPRINT  "start_sid_blaster"
+	movem.l	d1-a6,-(sp)
+	jsr	_sid_init
+	tst.l	d0
+	bne.b	.ok
+    DPRINT  "fail %ld"
+	moveq.l	#SID_NOSIDBLASTER,d0
+	bra.b	.fail
+.ok	clr.l	d0
+.fail	movem.l	(sp)+,d1-a6
+	rts
+
+stop_sid_blaster:
+    DPRINT  "stop_sid_blaster"
+	movem.l	d0-a6,-(sp)
+	jsr	_sid_exit
 	movem.l	(sp)+,d0-a6
 	rts
 
@@ -7503,6 +7540,7 @@ _PlaySidBase	ds.l	1
 *    a6 = PlaySID base
 
 initRESID
+    DPRINT  "initRESID"
     movem.l d1-a6,-(sp)
     move.l  psb_reSID(a6),a0
     jsr     sid_constructor
@@ -7590,7 +7628,7 @@ freeRESIDMemory:
     rts
 
 createReSIDWorkerTask:
-  
+    DPRINT  "createReSIDWorkerTask"
     movem.l d0-a6,-(sp)
     tst.b   workerStatus
     bne     .x
@@ -7631,7 +7669,8 @@ createReSIDWorkerTask:
     dc.b    "reSID",0
     even
 
-stopReSIDWorkerTask:
+stopReSIDWorkerTask:    
+    DPRINT  "stopReSIDWorkerTask"
     
     movem.l d0-a6,-(sp)
     tst.b   workerStatus
@@ -7880,6 +7919,7 @@ dmawait
 
 
 @MeasureRESIDPerformance:
+    DPRINT  "MeasureRESIDPerformance"
     movem.l d2-d7/a2-a6,-(sp)
     moveq   #-1,d7
     move.l	4.w,a6
@@ -7998,89 +8038,90 @@ dmawait
 pokeSound:
     move.b  #$00,d0
     move.b  #$15,d1 * fc_lo
-    bsr     .w
+    bsr     .write
 ;   000b 1601 000b 17f1 
     move.b  #$01,d0
     move.b  #$16,d1 * fc_hi
-    bsr     .w
+    bsr     .write
     move.b  #$f1,d0 * res=f, filter voice 1
     move.b  #$17,d1 * res_filt
-    bsr     .w
+    bsr     .write
 ;00000420:   186f   0507   06a2   0200  ...o............
     move.b  #$6f,d0 * filter mode=6 (hp+bp), vol=f
     move.b  #$18,d1 * mode_vol
-    bsr     .w
+    bsr     .write
     move.b  #$07,d0 * attack=0, decay=7
     move.b  #$05,d1 * v1 attack decay
-    bsr     .w
+    bsr     .write
     move.b  #$a2,d0 * sustain=a, release=2
     move.b  #$06,d1 * v1 sustain release
-    bsr     .w
+    bsr     .write
     move.b  #$00,d0
     move.b  #$02,d1 * v1 pw lo
-    bsr     .w
+    bsr     .write
 ;00000430:   0387   0043   0103   0441  .......C.......A
     move.b  #$87,d0
     move.b  #$03,d1 * v1 pw hi
-    bsr     .w
+    bsr     .write
     move.b  #$43,d0
     move.b  #$00,d1 * v1 freq lo
-    bsr     .w
+    bsr     .write
     move.b  #$03,d0
     move.b  #$01,d1 * v1 freq hi
-    bsr     .w
+    bsr     .write
     move.b  #$41,d0 * gate, pulse
     move.b  #$04,d1 * v1 control
-    bsr     .w
+    bsr     .write
 ;00000440:   0c00   0d64   0900   0a84  .......d........
     move.b  #$00,d0 * attack=0, decay=0
     move.b  #$0c,d1 * v2 attack decay
-    bsr     .w
+    bsr     .write
     move.b  #$64,d0 * sustain=6, release=4
     move.b  #$0d,d1 * v2 sustain release
-    bsr     .w
+    bsr     .write
     move.b  #$00,d0
     move.b  #$09,d1 * v2 pw lo
-    bsr     .w
+    bsr     .write
     move.b  #$84,d0
     move.b  #$0a,d1 * v2 pw hi
-    bsr     .w
+    bsr     .write
 ;00000450:   0714   0827   0b41   1300  .......'...A....
     move.b  #$14,d0
     move.b  #$07,d1 * v2 freq lo
-    bsr     .w
+    bsr     .write
     move.b  #$27,d0
     move.b  #$08,d1 * v2 freq hi
-    bsr     .w
+    bsr     .write
     move.b  #$41,d0 * gate, pulse
     move.b  #$0b,d1 * v2 control
-    bsr     .w
+    bsr     .write
     move.b  #$00,d0 * attack=0, decay=0
     move.b  #$13,d1 * v3 attack decay
-    bsr     .w
+    bsr     .write
 ;00000460:   14c2   10a0   1180   0e8d  ................
     move.b  #$c2,d0 * sustain=c, release=2
     move.b  #$14,d1 * v3 sustain release
-    bsr     .w
+    bsr     .write
     move.b  #$a0,d0
     move.b  #$10,d1 * v3 pw lo
-    bsr     .w
+    bsr     .write
     move.b  #$80,d0
     move.b  #$11,d1 * v3 pw hi
-    bsr     .w
+    bsr     .write
     move.b  #$8d,d0
     move.b  #$0e,d1 * v3 freq lo
-    bsr     .w
+    bsr     .write
 ;00000470:   0f3a   1241 
     move.b  #$3a,d0
     move.b  #$0f,d1 * v3 freq hi
-    bsr     .w
+    bsr     .write
     move.b  #$41,d0 * gate, pulse
     move.b  #$12,d1 * v3 control 
-    bsr     .w
+    bsr     .write
     rts    
 
-.w  lea     Sid,a0
+.write  
+    lea     Sid,a0
     jmp     sid_write
 
 
@@ -8202,3 +8243,112 @@ regDump
     * time(w),reg(b),data(b)
     ds.l    10000
   endif
+
+ if DEBUG
+
+   section debug,code
+
+PRINTOUT_DEBUGBUFFER
+	pea     _debugDesBuf(pc)
+	bsr.b   PRINTOUT
+	rts
+
+PRINTOUT
+	pushm	d0-d3/a0/a1/a5/a6
+	move.l	_output(pc),d1
+	bne.w	.open
+
+    move.b  _DOSBase(pc),d0
+    bne.b   .1
+    move.l  4.w,a6
+    lea     .dosname(pc),a1
+    jsr     _LVOOldOpenLibrary(a6)
+    move.l  d0,_DOSBase
+.1
+
+
+	* try tall window firsr
+	move.l	#.bmb,d1
+	move.l	#MODE_NEWFILE,d2
+    move.l  _DOSBase(pc),a6
+	jsr 	_LVOOpen(a6)
+	move.l	d0,_output
+	bne.b	.open
+	* smaller next
+	move.l	#.bmbSmall,d1
+	move.l	#MODE_NEWFILE,d2
+	jsr 	_LVOOpen(a6)
+	move.l	d0,_output
+	bne.b	.open
+	* still not open! exit
+	bra.b	.x
+
+.bmb		dc.b	"CON:20/10/350/190/PlaySID debug",0
+.bmbSmall  	dc.b	"CON:20/10/350/90/PlaySID debug",0
+    even
+
+
+.open
+	move.l	32+4(sp),a0
+
+	moveq	#0,d3
+	move.l	a0,d2
+.p	addq	#1,d3
+	tst.b	(a0)+
+	bne.b	.p
+    move.l  _DOSBase(pc),a6
+ 	jsr     _LVOWrite(a6)
+.x	popm	d0-d3/a0/a1/a5/a6
+	move.l	(sp)+,(sp)
+	rts
+ 
+
+.dosname     dc.b    "dos.library",0
+    even
+
+desmsgDebugAndPrint
+	* sp contains the return address, which is
+	* the string to print
+	movem.l	d0-d7/a0-a3/a6,-(sp)
+	* get string
+	move.l	4*(8+4+1)(sp),a0
+	* find end of string
+	move.l	a0,a1
+.e	tst.b	(a1)+
+	bne.b	.e
+	move.l	a1,d7
+	btst	#0,d7
+	beq.b	.even
+	addq.l	#1,d7
+.even
+	* overwrite return address 
+	* for RTS to be just after the string
+	move.l	d7,4*(8+4+1)(sp)
+
+	lea	    _debugDesBuf(pc),a3
+	move.l	sp,a1	
+	lea	.putc(pc),a2	
+	move.l	4.w,a6
+	jsr	    _LVORawDoFmt(a6)
+	movem.l	(sp)+,d0-d7/a0-a3/a6
+	bsr.w	PRINTOUT_DEBUGBUFFER
+	rts	* teleport!
+.putc	
+	move.b	d0,(a3)+	
+	rts
+
+CloseDebug:
+    move.l  _DOSBase(pc),a6
+    move.l  _output(pc),d1
+ 	jsr     _LVOClose(a6)
+    move.l  a6,a1
+    move.l  4.w,a6
+    jsr     _LVOCloseLibrary(a6)
+    clr.l   _DOSBase
+    clr.l   _output
+    rts
+
+_DOSBase        ds.l    1
+_output			ds.l 	1
+_debugDesBuf	ds.b	1024
+ endif ;; DEBUG
