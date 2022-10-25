@@ -3,6 +3,8 @@
 #include <proto/exec.h>
 #include <proto/poseidon.h>
 #include <exec/alerts.h>
+#include <stdint.h>
+#include <stdarg.h>
 
 #include "sidblast.h"
 
@@ -43,19 +45,44 @@ static uint8_t readResult();
 static uint32_t deviceUnplugged(register struct Hook *hook __asm("a0"), register APTR object __asm("a2"), register APTR message __asm("a1"));
 static const struct Hook hook = { .h_Entry = (HOOKFUNC)deviceUnplugged };
 
+#ifdef DEBUG
+
+  #define DPRINT kprintf
+void kprintf(const char *format, ...)
+{
+    va_list args;
+    static const uint16_t raw_put_char[5] = {0xcd4b, 0x4eae, 0xfdfc, 0xcd4b, 0x4e75};
+    va_start(args, format);
+
+    RawDoFmt((STRPTR) format, (APTR) args,
+             (void (*)()) raw_put_char, (APTR) SysBase);
+
+    va_end(args);
+}
+#else
+  #define DPRINT
+#endif
+
 uint8_t sid_init()
 {
-    if (usb)
+    DPRINT("sid_init\n");
+    if (usb) {
+        DPRINT("usb != NULL\n");
         return usb != NULL;
+    }
 
     struct Library* PsdBase;
     if(!(PsdBase = OpenLibrary("poseidon.library", 1)))
+    {   
+        DPRINT("poseidon open fail\n");
         return FALSE;
+    }
 
     usb = psdAllocVec(sizeof(struct SIDBlasterUSB));
 
     if (!usb)
     {
+        DPRINT("psdAllocVec fail\n");
         CloseLibrary(PsdBase);
         return FALSE;
     }
@@ -64,6 +91,8 @@ uint8_t sid_init()
     if (psdSpawnSubTask("SIDTask", SIDTask, usb))
     {
         Wait(SIGF_SINGLE);
+    } else {
+        DPRINT("psdSpawnSubTask fail\n");
     }
     usb->ctrlTask = NULL;
 
@@ -73,23 +102,29 @@ uint8_t sid_init()
     }
     else
     {
+        DPRINT("failed to acquire hw\n"); 
         psdAddErrorMsg(RETURN_ERROR, "SIDBlasterUSB", "Failed to acquire ancient hardware!");
         sid_exit();
     }
 
     CloseLibrary(PsdBase);
     PsdBase = NULL;
-
+        
+    DPRINT("return %ld\n", (int)(usb != NULL)); 
     return usb != NULL;
 }
 
 void sid_exit()
 {
-    if (!usb)
-        return;
-
+    DPRINT("sid_exit\n");
+    if (!usb) {
+       DPRINT("!usb\n");
+       return;
+    }
+        
     if(usb->mainTask)
     {
+        DPRINT("reset SID\n");
         // reset SID output
         sid_write_reg(0x00, 0x00);  // freq voice 1
         sid_write_reg(0x01, 0x00);
@@ -102,6 +137,7 @@ void sid_exit()
     struct Library* PsdBase;
     if((PsdBase = OpenLibrary("poseidon.library", 1)))
     {
+        DPRINT("stop tasks\n");
         usb->ctrlTask = FindTask(NULL);
 
         Forbid();
@@ -165,15 +201,20 @@ static void FreeSID(struct SIDBlasterUSB* usb);
 
 static void SIDTask()
 {
+    DPRINT("SIDTask\n"); 
+
     struct Task* currentTask = FindTask(NULL);
     struct SIDBlasterUSB* usb = currentTask->tc_UserData;
 
     if(!(PsdBase = OpenLibrary("poseidon.library", 1)))
     {
+        DPRINT("OpenLibrary fail\n"); 
         Alert(AG_OpenLib);
     }
     else if (AllocSID(usb))
     {
+        DPRINT("AllocSID OK\n"); 
+
         usb->mainTask = currentTask;
 
         Forbid();
@@ -257,8 +298,11 @@ static void SIDTask()
 
 static uint8_t AllocSID(struct SIDBlasterUSB* usb)
 {
+    DPRINT("AllocSID\n"); 
+
     // Find SIDBlasterUSB
     {
+        DPRINT("psdLocReadPBase\n"); 
         psdLockReadPBase();
 
         APTR pab = NULL;
@@ -271,6 +315,7 @@ static uint8_t AllocSID(struct SIDBlasterUSB* usb)
                                 DA_Binding, (ULONG)NULL,
                                 TAG_END))
         {
+            DPRINT("psdFindDevice pd=%lx\n", (int)pd); 
             psdLockReadDevice(pd);
 
             const char* product;
@@ -278,20 +323,30 @@ static uint8_t AllocSID(struct SIDBlasterUSB* usb)
                         DA_ProductName, (ULONG)&product,
                         TAG_END);
 
+            if (product) {
+                DPRINT("product=%s\n", product);
+            } else {
+                DPRINT("product=NULL\n"); 
+            }
+                
             pab = psdClaimAppBinding(ABA_Device, (ULONG)pd,
                                 ABA_ReleaseHook, (ULONG)&hook,
                                 ABA_UserData, (ULONG)usb);
 
+            DPRINT("psdClaimAppBinding pab=%lx\n", (int)pab); 
+
             psdUnlockDevice(pd);
 
-            if (pab)
+            if (pab) 
                 break;
         }
 
         psdUnlockPBase();
 
-        if (!pd)
+        if (!pd) {
+            DPRINT("!pd, return FALSE\n"); 
             return FALSE;
+        }
 
         usb->device = pd;
     }
