@@ -108,13 +108,15 @@ void sid_exit()
         if(usb->mainTask)
         {
             Signal(usb->mainTask, SIGBREAKF_CTRL_C);
-        }
-        Permit();
+            Permit();
 
-        while(usb->mainTask)
-        {
             Wait(SIGF_SINGLE);
         }
+        else
+        {
+            Permit();
+        }
+
         usb->ctrlTask = NULL;
 
         psdFreeVec(usb);
