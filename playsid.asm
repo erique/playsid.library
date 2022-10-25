@@ -7630,9 +7630,18 @@ freeRESIDMemory:
 createReSIDWorkerTask:
     DPRINT  "createReSIDWorkerTask"
     movem.l d0-a6,-(sp)
-    tst.b   workerStatus
+    tst.l   reSIDWorkerTask
     bne     .x
     move.l  a6,a5
+    
+    move.l  4.w,a6
+    sub.l   a1,a1
+    jsr     _LVOFindTask(a6)
+    move.l  d0,mainTask
+
+    moveq   #0,d0
+    moveq   #SIGF_SINGLE,d1
+    jsr     _LVOSetSignal(a6)
 
     lea     workerTaskStruct,a0
     move.b  #NT_TASK,LN_TYPE(a0)
@@ -7648,19 +7657,11 @@ createReSIDWorkerTask:
     move.l  a0,a1
     lea     reSIDWorkerEntryPoint(pc),a2
     sub.l   a3,a3
-    move.l  4.w,a6
     jsr     _LVOAddTask(a6)
 
     * Wait here until the task is fully running
-    move.l  psb_DOSBase(a5),a6
-.loop
-    tst.b   workerStatus
-    bne     .y
-    moveq   #1,d1
-    jsr     _LVODelay(a6)
-    bra     .loop
-.y
-
+    moveq   #SIGF_SINGLE,d0
+    jsr     _LVOWait(a6)
 .x
     movem.l (sp)+,d0-a6
     rts
@@ -7670,54 +7671,40 @@ createReSIDWorkerTask:
     even
 
 stopReSIDWorkerTask:    
-    DPRINT  "stopReSIDWorkerTask"
-    
+    DPRINT  "stopReSIDWorkerTask"    
     movem.l d0-a6,-(sp)
-    tst.b   workerStatus
-    beq     .x
-    move.b  #-1,workerStatus
+    tst.l   reSIDWorkerTask
+    beq.b   .done
 
-    move.l  psb_DOSBase(a6),a5
     move.l  4.w,a6
-    move.l  reSIDTask(pc),a1
     moveq   #0,d0
-    move.b  reSIDExitSignal(pc),d1
-    bset    d1,d0
+    moveq   #SIGF_SINGLE,d1
+    jsr     _LVOSetSignal(a6)
+
+    ; Send a break to the worker
+    move.l  reSIDWorkerTask(pc),a1
+    move.l  #SIGBREAKF_CTRL_C,d0
     jsr     _LVOSignal(a6)
 
-    move.l  a5,a6
-.loop
-    tst.b   workerStatus
-    beq     .y
-    moveq   #1,d1
-    jsr     _LVODelay(a6)
-    bra     .loop
-.y
-.x 
+    ; Wait for confirmation
+    moveq   #SIGF_SINGLE,d0
+    jsr     _LVOWait(a6)
+.done 
     movem.l (sp)+,d0-a6
     rts
 
 
 * Playback task
 reSIDWorkerEntryPoint
-
     move.l  4.w,a6
     sub.l   a1,a1
     jsr     _LVOFindTask(a6)
-    move.l  d0,reSIDTask
-    
+    move.l  d0,reSIDWorkerTask
  ifne ENABLE_LEV4PLAY 
     move.l  #reSIDLevel1Intr,reSIDLevel4Intr1Data
  else
     move.l  d0,reSIDLevel4Intr1Data
  endif
-
-     moveq   #-1,d0
-    jsr     _LVOAllocSignal(a6)
-    move.b  d0,reSIDAudioSignal
-    moveq   #-1,d0
-    jsr     _LVOAllocSignal(a6)
-    move.b  d0,reSIDExitSignal
 
     ; Stop all 
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
@@ -7771,18 +7758,18 @@ reSIDWorkerEntryPoint
     ; fill A
     ; ... etc
 
-    addq.b  #1,workerStatus
+    ; Signal that we're running
+    move.l  4.w,a6
+    move.l  mainTask(pc),a1
+    moveq   #SIGF_SINGLE,d0
+    jsr     _LVOSignal(a6)
 .loop
     move.l  4.w,a6
-    moveq   #0,d0
-    move.b  reSIDAudioSignal(pc),d1
-    bset    d1,d0
-    move.b  reSIDExitSignal(pc),d1
-    bset    d1,d0
+    move.l  #SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D,d0
     jsr     _LVOWait(a6)
 
-    tst.b   workerStatus
-    bmi.b   .x
+    and.l   #SIGBREAKF_CTRL_C,d0
+    bne.b   .x
 
   ifeq ENABLE_LEV4PLAY
     push    a6
@@ -7792,7 +7779,9 @@ reSIDWorkerEntryPoint
     bsr     switchAndFillBuffer
     pop     a6
   endif
+    
     bra     .loop
+
 .bob1
   ifeq ENABLE_14BIT
      dc.w   $ff0
@@ -7801,31 +7790,31 @@ reSIDWorkerEntryPoint
   endif
 
 .x
-
     move    #$f,dmacon+$dff000
+    clr     $dff0a8
+    clr     $dff0b8
+    clr     $dff0c8
+    clr     $dff0d8
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
 
+    
     moveq	#INTB_AUD0,d0
     move.l  oldVecAud0(pc),a1
     move.l  4.w,a6
     jsr     _LVOSetIntVector(a6)
     move.l  d0,oldVecAud0
-    
-    move.b   reSIDAudioSignal(pc),d0
-    jsr     _LVOFreeSignal(a6)
-    move.b   reSIDExitSignal(pc),d0
-    jsr     _LVOFreeSignal(a6)
 
     jsr     _LVOForbid(a6)
-    clr.b   workerStatus
+    clr.l   reSIDWorkerTask
+
+    move.l  mainTask(pc),a1
+    moveq   #SIGF_SINGLE,d0
+    jsr     _LVOSignal(a6)
     rts
 
 
-
-
  switchAndFillBuffer:
-
     * Switch buffers
     movem.l buffer1p(pc),d0/d1/a1/a2
     movem.l d0/d1,buffer2p
@@ -7880,9 +7869,7 @@ reSIDLevel4Handler1
     move.w  #INTF_AUD0,intreq(a0)
  ifeq ENABLE_LEV4PLAY
     * a1 = task
-    move.b  reSIDAudioSignal(pc),d1
-    moveq   #0,d0
-    bset    d1,d0
+    move.l  #SIGBREAKF_CTRL_D,d0
     jmp     _LVOSignal(a6)
  else
     * a1 = int struct
@@ -8132,25 +8119,14 @@ timerRequest	        ds.b    IOTV_SIZE
 clockStart              ds.b    EV_SIZE
 clockEnd                ds.b    EV_SIZE
 
-
-    ;0  = not running
-    ;1  = running
-    ;-1 = exiting
-workerStatus      dc.b    0
-                  even
-cyclesPerFrame
-                  dc.l    0
-bufferMemoryPtr
-                  dc.l    0
-
+cyclesPerFrame           dc.l    0
+bufferMemoryPtr    dc.l    0
 buffer1p          dc.l    0
                   dc.l    0
 buffer2p          dc.l    0
                   dc.l    0
-
-reSIDTask:        dc.l    0
-reSIDAudioSignal  dc.b    0
-reSIDExitSignal   dc.b    0
+mainTask        dc.l    0
+reSIDWorkerTask:        dc.l    0
 oldVecAud0        dc.l    0
  
 
