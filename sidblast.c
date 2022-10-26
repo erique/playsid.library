@@ -61,6 +61,7 @@ uint8_t sid_init()
     }
 
     usb->ctrlTask = FindTask(NULL);
+    SetSignal(0, SIGF_SINGLE);
     if (psdSpawnSubTask("SIDTask", SIDTask, usb))
     {
         Wait(SIGF_SINGLE);
@@ -105,6 +106,7 @@ void sid_exit()
         usb->ctrlTask = FindTask(NULL);
 
         Forbid();
+        SetSignal(0, SIGF_SINGLE);
         if(usb->mainTask)
         {
             Signal(usb->mainTask, SIGBREAKF_CTRL_C);
