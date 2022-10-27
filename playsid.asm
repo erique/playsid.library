@@ -7546,10 +7546,17 @@ initRESID
     jsr     sid_constructor
 
     move.l  #985248,d0
-    moveq   #SAMPLING_METHOD_SAMPLE_FAST,d1
+ if ENABLE_14BIT
+    ;moveq   #SAMPLING_METHOD_INTERPOLATE14,d1
+    ;moveq   #SAMPLING_METHOD_OVERSAMPLE14,d1
+    moveq   #SAMPLING_METHOD_SAMPLE_FAST14,d1
+ else
+    moveq   #SAMPLING_METHOD_SAMPLE_FAST8,d1
+ endif
     move.l  #PAULA_PERIOD,d2
     move.l  psb_reSID(a6),a0
     jsr     sid_set_sampling_parameters_paula
+    move.l  a1,clockRoutine
 
     * Calculate how many cycles are needed per a 1/100s 
     * frame as accurately as possible.
@@ -7825,7 +7832,6 @@ reSIDWorkerEntryPoint
     move.l  a1,$b0+$dff000 
     move.l  a2,$c0+$dff000 
  
-  ifne ENABLE_14BIT
 
 fillBuffer:
     lea     Sid,a0
@@ -7833,36 +7839,17 @@ fillBuffer:
     move.l  cyclesPerFrame(pc),d0
     * buffer size limit
     move.l  #SAMPLE_BUFFER_SIZE,d1
-    jsr     sid_clock_fast14
-    * d0 = bytes received, make words
-    lsr     #1,d0
-    move    d0,$a4+$dff000   * words
-    move    d0,$d4+$dff000   * words
-    move    d0,$b4+$dff000   * words
-    move    d0,$c4+$dff000   * words
-    rts
-
-  else
-
-fillBuffer:
-    lea     Sid,a0
-    ;move.l  buffer1p(pc),a1
-    move.l  cyclesPerFrame(pc),d0
-    * buffer size limit
-    move.l  #SAMPLE_BUFFER_SIZE,d1
-    jsr     sid_clock_fast8
+    move.l   clockRoutine(pc),a3
+    jsr      (a3)
     * d0 = bytes received, make words
     * rounds down, so may discard one byte
     lsr     #1,d0
-
     move    d0,$a4+$dff000   * words
     move    d0,$d4+$dff000   * words
     move    d0,$b4+$dff000   * words
     move    d0,$c4+$dff000   * words
     rts
 
-  endif
-  
 * a1 = is_data 
 * a6 = execbase
 reSIDLevel4Handler1
@@ -7934,7 +7921,7 @@ dmawait
     jsr	    sid_constructor
     
     move.l  #985248,d0
-    moveq   #SAMPLING_METHOD_SAMPLE_FAST,d1
+    moveq   #SAMPLING_METHOD_SAMPLE_FAST8,d1
     move.l  #PAULA_PERIOD,d2
     lea     Sid,a0
     jsr     sid_set_sampling_parameters_paula
@@ -8115,18 +8102,18 @@ pokeSound:
 
 
 
-timerRequest	        ds.b    IOTV_SIZE
-clockStart              ds.b    EV_SIZE
-clockEnd                ds.b    EV_SIZE
-
-cyclesPerFrame           dc.l    0
-bufferMemoryPtr    dc.l    0
+timerRequest      ds.b    IOTV_SIZE
+clockStart        ds.b    EV_SIZE
+clockEnd          ds.b    EV_SIZE
+cyclesPerFrame    dc.l    0
+clockRoutine      dc.l    0
+bufferMemoryPtr   dc.l    0
 buffer1p          dc.l    0
                   dc.l    0
 buffer2p          dc.l    0
                   dc.l    0
-mainTask        dc.l    0
-reSIDWorkerTask:        dc.l    0
+mainTask          dc.l    0
+reSIDWorkerTask:  dc.l    0
 oldVecAud0        dc.l    0
  
 
