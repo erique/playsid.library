@@ -444,17 +444,25 @@ SetDefaultOperatingMode:
 
 *-----------------------------------------------------------------------*
 
+; in:
+*   d0 = Operating mode
+*   d1 = reSID mode, optional
 @SetOperatingMode
  if DEBUG
         ext.l   d0
-        DPRINT  "SetOperatingMode %ld"
+        ext.l   d1
+        DPRINT  "SetOperatingMode %ld resid=%ld"
  endif
     	move.w	d0,psb_OperatingMode(a6)
+    	move.w	d1,psb_ResidMode(a6)
 		rts
 
 
 @GetOperatingMode
+        moveq   #0,d0
     	move.w	psb_OperatingMode(a6),d0
+        moveq   #0,d1
+    	move.w	psb_ResidMode(a6),d1
 		rts
 
 *-----------------------------------------------------------------------*
@@ -7545,14 +7553,24 @@ initRESID
     move.l  psb_reSID(a6),a0
     jsr     sid_constructor
 
-    move.l  #985248,d0
  if ENABLE_14BIT
-    ;moveq   #SAMPLING_METHOD_INTERPOLATE14,d1
-    ;moveq   #SAMPLING_METHOD_OVERSAMPLE14,d1
+    move    psb_ResidMode(a6),d1
+    moveq   #SAMPLING_METHOD_OVERSAMPLE2x14,d0
+    cmp     #RM_OVERSAMPLE2,d1
+    beq.b   .go
+    moveq   #SAMPLING_METHOD_OVERSAMPLE4x14,d0
+    cmp     #RM_OVERSAMPLE4,d1
+    beq.b   .go
+    moveq   #SAMPLING_METHOD_INTERPOLATE14,d0
+    cmp     #RM_INTERPOLATE,d1
+    beq.b   .go
+    ; Default
     moveq   #SAMPLING_METHOD_SAMPLE_FAST14,d1
  else
     moveq   #SAMPLING_METHOD_SAMPLE_FAST8,d1
  endif
+.go
+    move.l  #985248,d0
     move.l  #PAULA_PERIOD,d2
     move.l  psb_reSID(a6),a0
     jsr     sid_set_sampling_parameters_paula

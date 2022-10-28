@@ -178,6 +178,7 @@ FREE		MACRO
     UWORD   psb_Volume
     APTR    psb_reSID
     UWORD   psb_OperatingMode
+    UWORD   psb_ResidMode
     APTR    psb_DOSBase
 	LABEL	psb_SIZEOF
 
@@ -210,6 +211,12 @@ OM_NORMAL         equ 0
 OM_RESID_6581     equ 1
 OM_RESID_8580     equ 2
 OM_SIDBLASTER_USB equ 3
+
+; --- reSID Modes -----------------------------------------------------
+RM_NORMAL         equ 0
+RM_OVERSAMPLE2    equ 1
+RM_OVERSAMPLE4    equ 2
+RM_INTERPOLATE    equ 3
 
 ; ========================================================================;
 ; === DisplayData ========================================================;
