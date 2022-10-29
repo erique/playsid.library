@@ -57,7 +57,7 @@ playsid.library sample handling is not used with reSID.
 Sometimes the sound output may be noisy. This is sampling noise, 
 result of the reSID "fast sampling" method. A few other sampling
 modes are also available. These are heavier and may not run on 
-an 50 MHz 68060.
+a 50 MHz 68060.
 
 The sound is output using the Paula 14-bit mode.
 
