@@ -27,8 +27,8 @@ Applications using "playsid.library" will automatically be enhanced.
 These are at least HippoPlayer and DeliTracker. 
 
 HippoPlayer also provides additional integration in the user interface: 
-output mode selection, volume setting, scope display. With Hippo 
-the environment variable setting is not used.
+output mode selection, reSID sampling setttings, volume setting, 
+scope display. With Hippo the environment variable setting is not used.
 
 If you're running kickstart 1.3 or a 68000 you should use the original 
 library version.
@@ -55,9 +55,9 @@ had some special handling in SID players and emulators. The
 playsid.library sample handling is not used with reSID.
 
 Sometimes the sound output may be noisy. This is sampling noise, 
-result of the reSID "fast sampling" method. Unfortunately the 
-better quality sampling options available in reSID are too slow 
-for a 50 MHz 68060 so they have been left out.
+result of the reSID "fast sampling" method. A few other sampling
+modes are also available. These are heavier and may not run on 
+an 50 MHz 68060.
 
 The sound is output using the Paula 14-bit mode.
 
