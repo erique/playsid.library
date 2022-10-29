@@ -7553,6 +7553,11 @@ initRESID
     move.l  psb_reSID(a6),a0
     jsr     sid_constructor
 
+
+    moveq   #0,d0
+    move    psb_ResidMode(a6),d0
+    DPRINT  "residmode=%ld"
+
  if ENABLE_14BIT
     move    psb_ResidMode(a6),d1
     moveq   #SAMPLING_METHOD_OVERSAMPLE2x14,d0
@@ -7570,6 +7575,12 @@ initRESID
     moveq   #SAMPLING_METHOD_SAMPLE_FAST8,d1
  endif
 .go
+ if DEBUG
+    moveq   #0,d0
+    move.b  d1,d0
+    DPRINT  "sampling mode=%ld"
+ endif
+
     move.l  #985248,d0
     move.l  #PAULA_PERIOD,d2
     move.l  psb_reSID(a6),a0
@@ -7586,6 +7597,10 @@ initRESID
     * the correct position
     divu.l  #1<<(16+10),d1:d0
     move.l  d0,cyclesPerFrame
+
+ if DEBUG
+    DPRINT  "Cycles per frame=%lx"
+ endif
 
     move.l  psb_reSID(a6),a0
     jsr     sid_reset
@@ -7910,15 +7925,33 @@ dmawait
 	rts
 
 
+* In:
+*   d0 = reSID mode to test, RM_NORMAL... etc
 @MeasureRESIDPerformance:
-    DPRINT  "MeasureRESIDPerformance"
+ if DEBUG
+    ext.l   d0
+ endif
+    DPRINT  "MeasureRESIDPerformance %ld"
     movem.l d2-d7/a2-a6,-(sp)
+
+    moveq   #SAMPLING_METHOD_OVERSAMPLE2x14,d4
+    cmp.b   #RM_OVERSAMPLE2,d0
+    beq.b   .go
+    moveq   #SAMPLING_METHOD_OVERSAMPLE4x14,d4
+    cmp.b   #RM_OVERSAMPLE4,d0
+    beq.b   .go
+    moveq   #SAMPLING_METHOD_INTERPOLATE14,d4
+    cmp.b   #RM_INTERPOLATE,d0
+    beq.b   .go
+    moveq   #SAMPLING_METHOD_SAMPLE_FAST14,d4
+.go
+    ;----------------------------------
     moveq   #-1,d7
     move.l	4.w,a6
     move	LIB_VERSION(a6),d0
     cmp     #36,d0
     blo     .x
-
+    ;----------------------------------
     lea     .timerDeviceName(pc),a0
     moveq	#UNIT_ECLOCK,d0
     moveq	#0,d1
@@ -7926,7 +7959,7 @@ dmawait
     jsr	    _LVOOpenDevice(a6)		; d0=0 if success
     tst.l	d0
     bne     .error
-
+    ;----------------------------------
     moveq   #0,d6
     move.l  #(4*SAMPLE_BUFFER_SIZE),d0
     move.l  #MEMF_CHIP!MEMF_CLEAR,d1
@@ -7934,15 +7967,16 @@ dmawait
     tst.l   d0
     beq     .error2
     move.l  d0,d6
-
+    ;----------------------------------
     lea     Sid,a0
     jsr	    sid_constructor
     
     move.l  #985248,d0
-    moveq   #SAMPLING_METHOD_SAMPLE_FAST8,d1
+    move.b  d4,d1       * select sampling mode
     move.l  #PAULA_PERIOD,d2
     lea     Sid,a0
     jsr     sid_set_sampling_parameters_paula
+    move.l  a1,a4       * grab the clock routine
 
     move.l  #SAMPLES_PER_FRAME,d0
     lea     Sid,a0
@@ -7951,6 +7985,9 @@ dmawait
     * the correct position
     divu.l  #1<<(16+10),d1:d0
     move.l  d0,d5
+    DPRINT  "cycles per sample=%ld"
+
+    ;----------------------------------
 
     move.l  4.w,a6
     jsr     _LVOForbid(a6)
@@ -7959,14 +7996,20 @@ dmawait
     move.l	IO_DEVICE+timerRequest(pc),a6
     jsr     _LVOReadEClock(a6)
 
+    ;----------------------------------
+
     move.l  d6,-(sp)
-    move.l  d6,a1
+    * Write both 14-bit bytes into same buffer, doesn't matter here
+    move.l  d6,a1   * output buffer high byte
+    move.l  d6,a2   * output buffer low byte
     move.l  d5,d0  * cycles
     lsl.l   #2,d0  * do 4 frames
-    move.l  #4*SAMPLES_PER_FRAME,d1 * buffer limit
+    move.l  #(4*SAMPLE_BUFFER_SIZE),d1 * buffer limit
     lea     Sid,a0
-    jsr     sid_clock_fast8
+    jsr     (a4)    * call clock routine
     move.l  (sp)+,d6
+
+    ;----------------------------------
 
     lea     clockEnd(pc),a0
     move.l	IO_DEVICE+timerRequest(pc),a6
@@ -7976,6 +8019,8 @@ dmawait
     move.l  4.w,a6
     jsr     _LVOPermit(a6)
     move.l  (sp)+,d0
+
+    ;----------------------------------
 
      * D0 will be 709379 for PAL.
 	move.l	d0,d2
@@ -7999,10 +8044,14 @@ dmawait
 	; take the lower 32-bits
     move.l  d1,d7
 
+    ;----------------------------------
+
     lea     Sid,a0
     jsr     sid_reset
 
 .error2
+    ;----------------------------------
+
     lea     timerRequest(pc),a1
     move.l  4.w,a6
     jsr     _LVOCloseDevice(a6)
