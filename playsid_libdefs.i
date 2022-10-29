@@ -213,10 +213,11 @@ OM_RESID_8580     equ 2
 OM_SIDBLASTER_USB equ 3
 
 ; --- reSID Modes -----------------------------------------------------
-RM_NORMAL         equ 0
-RM_OVERSAMPLE2    equ 1
-RM_OVERSAMPLE4    equ 2
-RM_INTERPOLATE    equ 3
+REM_NORMAL         equ 0
+REM_OVERSAMPLE2    equ 1
+REM_OVERSAMPLE3    equ 2
+REM_OVERSAMPLE4    equ 3
+REM_INTERPOLATE    equ 4
 
 ; ========================================================================;
 ; === DisplayData ========================================================;

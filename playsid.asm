@@ -7561,13 +7561,16 @@ initRESID
  if ENABLE_14BIT
     move    psb_ResidMode(a6),d1
     moveq   #SAMPLING_METHOD_OVERSAMPLE2x14,d0
-    cmp     #RM_OVERSAMPLE2,d1
+    cmp     #REM_OVERSAMPLE2,d1
+    beq.b   .go
+    moveq   #SAMPLING_METHOD_OVERSAMPLE3x14,d0
+    cmp     #REM_OVERSAMPLE3,d1
     beq.b   .go
     moveq   #SAMPLING_METHOD_OVERSAMPLE4x14,d0
-    cmp     #RM_OVERSAMPLE4,d1
+    cmp     #REM_OVERSAMPLE4,d1
     beq.b   .go
     moveq   #SAMPLING_METHOD_INTERPOLATE14,d0
-    cmp     #RM_INTERPOLATE,d1
+    cmp     #REM_INTERPOLATE,d1
     beq.b   .go
     ; Default
     moveq   #SAMPLING_METHOD_SAMPLE_FAST14,d1
@@ -7935,13 +7938,16 @@ dmawait
     movem.l d2-d7/a2-a6,-(sp)
 
     moveq   #SAMPLING_METHOD_OVERSAMPLE2x14,d4
-    cmp.b   #RM_OVERSAMPLE2,d0
+    cmp.b   #REM_OVERSAMPLE2,d0
+    beq.b   .go
+    moveq   #SAMPLING_METHOD_OVERSAMPLE3x14,d4
+    cmp.b   #REM_OVERSAMPLE3,d0
     beq.b   .go
     moveq   #SAMPLING_METHOD_OVERSAMPLE4x14,d4
-    cmp.b   #RM_OVERSAMPLE4,d0
+    cmp.b   #REM_OVERSAMPLE4,d0
     beq.b   .go
     moveq   #SAMPLING_METHOD_INTERPOLATE14,d4
-    cmp.b   #RM_INTERPOLATE,d0
+    cmp.b   #REM_INTERPOLATE,d0
     beq.b   .go
     moveq   #SAMPLING_METHOD_SAMPLE_FAST14,d4
 .go
