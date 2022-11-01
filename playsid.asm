@@ -7749,6 +7749,11 @@ residWorkerEntryPoint
  else
     move.l  d0,residLevel4Intr1Data
  endif
+    * Max softint priority
+    move.b  #32,LN_PRI+residLevel1Intr
+
+    clr.l   frameCount
+    clr.l   framesSkipped
 
     ; Stop all 
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
@@ -7825,9 +7830,6 @@ residWorkerEntryPoint
     jsr     _LVOSetIntVector(a6)
     move.l  d0,oldVecAud0
 
-    lea     residTimerRequest(pc),a1
-    jsr     _LVOCloseDevice(a6)
-
 .error
 
     jsr     _LVOForbid(a6)
@@ -7893,18 +7895,6 @@ fillBuffer:
     move    d0,$c4+$dff000   * words
     rts
 
-* a1 = is_data 
-* a6 = execbase
-reSIDLevel4Handler1
-    move.w  #INTF_AUD0,intreq(a0)
- ifeq ENABLE_LEV4PLAY
-    * a1 = task
-    move.l  #SIGBREAKF_CTRL_D,d0
-    jmp     _LVOSignal(a6)
- else
-    * a1 = int struct
-    jmp     _LVOCause(a6)
- endif
 
 ;  D0 - scratch
 ;  D1 - scratch (on entry: active
@@ -7920,9 +7910,65 @@ reSIDLevel4Handler1
 residLevel1Handler:
    	movem.l d2-d7/a2-a4/a6,-(sp)
     bsr.b   switchAndFillBuffer
+    clr.w   framePending
    	movem.l (sp)+,d2-d7/a2-a4/a6
+    rts
+
+* a0 = custom
+* a1 = is_data
+* a6 = execbase
+residLevel4Handler1
+    move.w  #INTF_AUD0,intreq(a0)
+ ifeq ENABLE_LEV4PLAY
+    * a1 = task
+    move.l  #SIGBREAKF_CTRL_D,d0
+    jmp     _LVOSignal(a6)
+ else
+    * a1 = residLevel1Intr
+    basereg residLevel1Intr,a1
+    
+    * Keep track of audio frames
+    addq.w  #1,frameCount(a1)
+    * Check if lev1 is done with the previous frame
+    tst.b   framePending(a1)
+    beq.b   .1
+    * Keep track of skipped frames
+    addq.w  #1,framesSkipped(a1)
+    move    #$f00,$dff180
+    bra.b    .stopCheck
+.1
+    bsr.b   .stopCheck
+    bne.b   .2
+    rts
+.2  
+    * Start processing a new frame
+    st      framePending(a1)
+    jmp     _LVOCause(a6)
+ endif
+
+* Every 256 frames check how many skipped 
+* frames there are. Stop if too many.
+* 256 frames * 1/200s = 1.28 seconds
+.stopCheck
+    cmp.w   #256,frameCount(a1)
+    blo.b   .4
+    move.w  framesSkipped(a1),d0
+    clr.w   frameCount(a1)
+    clr.w   framesSkipped(a1)
+    cmp.w   #32,d0
+    blo.b   .4
+    * Stop playing, at least ~13% frames skipped
+    move.w  #INTF_AUD0,intena+$dff000
+    move.l  residWorkerTask(pc),a1
+    move.l  #SIGBREAKF_CTRL_C,d0
+    jsr     _LVOSignal(a6)
     moveq   #0,d0
     rts
+.4
+    moveq   #1,d0
+    rts
+
+    endb    a1
 
 
 dmawait
