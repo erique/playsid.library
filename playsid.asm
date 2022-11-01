@@ -165,11 +165,10 @@ AutoInitVectors	;***** Standard System Routines *****
         dc.l    @SetOperatingMode
         dc.l    @GetOperatingMode
         dc.l    @SetVolume
-        dc.l    @SetRESIDChipModel
-        dc.l    @SetRESIDFilter
-        dc.l    @GetRESIDAudioBuffer
-        dc.l    @MeasureRESIDPerformance
-
+        dc.l    @SetResidChipModel
+        dc.l    @SetResidFilter
+        dc.l    @GetResidAudioBuffer
+        dc.l    @MeasureResidPerformance
 		dc.l	-1
 
 AutoInitStructure
@@ -331,7 +330,7 @@ AutoInitFunction
         cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
         bne.b   .1
 .2
-        jsr     initRESID
+        jsr     initResid
 .1  
         * Default volume
         moveq   #$40,d0
@@ -425,7 +424,7 @@ SetDefaultOperatingMode:
         beq.b   .2
         cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
         bne.b   .1
-.2      jsr     resetRESID
+.2      jsr     resetResid
 .1  
         * Undefine operating mode so that will be determined again the next time.
         move.w  #-1,psb_OperatingMode(a6)
@@ -737,7 +736,7 @@ AllocEmulMem
 		beq.s	.Error
 		ALLOC	psb_SampleMem(a6),SAMPLEMEM_SIZE,MEMF_CHIP
 		beq.s	.Error
-        jsr     allocRESIDMemory
+        jsr     allocResidMemory
         beq.s   .Error
 		moveq	#0,d0
 		rts
@@ -754,7 +753,7 @@ FreeEmulMem
 		FREE	psb_C64Mem(a6),C64MEM_SIZE
 		FREE	psb_EnvelopeMem(a6),ENVELOPEMEM_SIZE
 		FREE	psb_SampleMem(a6),SAMPLEMEM_SIZE
-        jsr     freeRESIDMemory
+        jsr     freeResidMemory
 		rts
 
 *-----------------------------------------------------------------------*
@@ -1175,7 +1174,7 @@ InitSID
         cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
         bne.b   .1
 .2
-        jsr     resetRESID
+        jsr     resetResid
 .1  
     	movem.l	(a7)+,a2-a3
 		rts
@@ -4368,7 +4367,7 @@ OpenIRQ
         beq.b   .reSID
         bra.b   .5    
 .reSID
-        jsr     createReSIDWorkerTask
+        jsr     createResidWorkerTask
 .5
         bsr	PlayDisable
 		moveq	#0,d0
@@ -4427,7 +4426,7 @@ CloseIRQ	tst.w	psb_TimerBFlag(a6)
         beq.b   .resid
         rts
 .resid
-        jsr     stopReSIDWorkerTask
+        jsr     stopResidWorkerTask
         rts
 
 *-----------------------------------------------------------------------*
@@ -7519,7 +7518,7 @@ _PlaySidBase	ds.l	1
 
 * In:
 *   d0 = 0 for 6581, 1 for 8580
-@SetRESIDChipModel
+@SetResidChipModel
     move.l  psb_reSID(a6),a0
     moveq   #CHIP_MODEL_MOS6581,d0
     tst.b   d0
@@ -7529,7 +7528,7 @@ _PlaySidBase	ds.l	1
 
 * In:
 *   d0 = 0 or 1
-@SetRESIDFilter
+@SetResidFilter
     move.l  psb_reSID(a6),a0
     jmp     sid_enable_filter
 
@@ -7537,18 +7536,19 @@ _PlaySidBase	ds.l	1
 *   d0 = buffer length in bytes
 *   d1 = period value used
 *   a0 = audio buffer pointer
-@GetRESIDAudioBuffer
+@GetResidAudioBuffer
     move.l  buffer1p,a0
     move.l  #SAMPLE_BUFFER_SIZE,d0
     move.l  #PAULA_PERIOD,d1
     rts
 
+
 * Initialize reSID, safe to call whenever.
 * In:
 *    a6 = PlaySID base
 
-initRESID
-    DPRINT  "initRESID"
+initResid
+    DPRINT  "initResid"
     movem.l d1-a6,-(sp)
     move.l  psb_reSID(a6),a0
     jsr     sid_constructor
@@ -7578,6 +7578,7 @@ initRESID
     moveq   #SAMPLING_METHOD_SAMPLE_FAST8,d1
  endif
 .go
+
  if DEBUG
     moveq   #0,d0
     move.b  d1,d0
@@ -7623,7 +7624,7 @@ initRESID
 
 * Out:
 *    d0 = 0: out of mem, non-1: ok
-allocRESIDMemory:
+allocResidMemory:
     push   a6
     cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
     beq.b   .z
@@ -7653,11 +7654,11 @@ allocRESIDMemory:
     pop     a6
     rts
 
-resetRESID:
+resetResid:
     move.l  psb_reSID(a6),a0
     jmp     sid_reset
 
-freeRESIDMemory:
+freeResidMemory:
     push    a6
     lea     bufferMemoryPtr(pc),a2
     tst.l   (a2)
@@ -7670,13 +7671,13 @@ freeRESIDMemory:
 .y  pop     a6
     rts
 
-createReSIDWorkerTask:
-    DPRINT  "createReSIDWorkerTask"
+createResidWorkerTask:
+    DPRINT  "createResidWorkerTask"
     movem.l d0-a6,-(sp)
-    tst.l   reSIDWorkerTask
+    tst.l   residWorkerTask
     bne     .x
     move.l  a6,a5
-    
+
     move.l  4.w,a6
     sub.l   a1,a1
     jsr     _LVOFindTask(a6)
@@ -7698,7 +7699,7 @@ createReSIDWorkerTask:
     move.l  a1,TC_SPREG(a0)
 
     move.l  a0,a1
-    lea     reSIDWorkerEntryPoint(pc),a2
+    lea     residWorkerEntryPoint(pc),a2
     sub.l   a3,a3
     jsr     _LVOAddTask(a6)
 
@@ -7713,10 +7714,10 @@ createReSIDWorkerTask:
     dc.b    "reSID",0
     even
 
-stopReSIDWorkerTask:    
-    DPRINT  "stopReSIDWorkerTask"    
+stopResidWorkerTask:    
+    DPRINT  "stopResidWorkerTask"    
     movem.l d0-a6,-(sp)
-    tst.l   reSIDWorkerTask
+    tst.l   residWorkerTask
     beq.b   .done
 
     move.l  4.w,a6
@@ -7725,7 +7726,7 @@ stopReSIDWorkerTask:
     jsr     _LVOSetSignal(a6)
 
     ; Send a break to the worker
-    move.l  reSIDWorkerTask(pc),a1
+    move.l  residWorkerTask(pc),a1
     move.l  #SIGBREAKF_CTRL_C,d0
     jsr     _LVOSignal(a6)
 
@@ -7738,15 +7739,15 @@ stopReSIDWorkerTask:
 
 
 * Playback task
-reSIDWorkerEntryPoint
+residWorkerEntryPoint
     move.l  4.w,a6
     sub.l   a1,a1
     jsr     _LVOFindTask(a6)
-    move.l  d0,reSIDWorkerTask
+    move.l  d0,residWorkerTask
  ifne ENABLE_LEV4PLAY 
-    move.l  #reSIDLevel1Intr,reSIDLevel4Intr1Data
+    move.l  #residLevel1Intr,residLevel4Intr1Data
  else
-    move.l  d0,reSIDLevel4Intr1Data
+    move.l  d0,residLevel4Intr1Data
  endif
 
     ; Stop all 
@@ -7754,7 +7755,7 @@ reSIDWorkerEntryPoint
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
     move.w  #DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
 
-    lea     reSIDLevel4Intr1,a1
+    lea     residLevel4Intr1,a1
     moveq   #INTB_AUD0,d0		; Allocate Level 4
     jsr     _LVOSetIntVector(a6)
     move.l  d0,oldVecAud0
@@ -7768,17 +7769,7 @@ reSIDWorkerEntryPoint
     move    #PAULA_PERIOD,$c6+$dff000
     move    #PAULA_PERIOD,$d6+$dff000
     
-  ifne ENABLE_14BIT
-    move    #64,$a8+$dff000
-    move    #1,$d8+$dff000
-    move    #64,$b8+$dff000
-    move    #1,$c8+$dff000
-  else
-    move    #64,$a8+$dff000
-    move    #0,$d8+$dff000
-    move    #64,$b8+$dff000
-    move    #0,$c8+$dff000   
-  endif
+    bsr     residSetVolume
 
     bsr     switchAndFillBuffer
     bsr     dmawait     * probably not needed
@@ -7806,8 +7797,9 @@ reSIDWorkerEntryPoint
     move.l  mainTask(pc),a1
     moveq   #SIGF_SINGLE,d0
     jsr     _LVOSignal(a6)
-.loop
+
     move.l  4.w,a6
+.loop
     move.l  #SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D,d0
     jsr     _LVOWait(a6)
 
@@ -7816,48 +7808,64 @@ reSIDWorkerEntryPoint
 
   ifeq ENABLE_LEV4PLAY
     push    a6
-    * Debug color
-    move    .bob1,$dff180
-    not	    .bob1
     bsr     switchAndFillBuffer
     pop     a6
   endif
-    
     bra     .loop
-
-.bob1
-  ifeq ENABLE_14BIT
-     dc.w   $ff0
-  else
-     dc.w   $0f0
-  endif
 
 .x
     move    #$f,dmacon+$dff000
-    clr     $dff0a8
-    clr     $dff0b8
-    clr     $dff0c8
-    clr     $dff0d8
+    bsr     residClearVolume
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
 
-    
     moveq	#INTB_AUD0,d0
     move.l  oldVecAud0(pc),a1
     move.l  4.w,a6
     jsr     _LVOSetIntVector(a6)
     move.l  d0,oldVecAud0
 
+    lea     residTimerRequest(pc),a1
+    jsr     _LVOCloseDevice(a6)
+
+.error
+
     jsr     _LVOForbid(a6)
-    clr.l   reSIDWorkerTask
+    clr.l   residWorkerTask
 
     move.l  mainTask(pc),a1
     moveq   #SIGF_SINGLE,d0
     jsr     _LVOSignal(a6)
     rts
 
+residSetVolume:
+  ifne ENABLE_14BIT
+    move    #64,$a8+$dff000
+    move    #1,$d8+$dff000
+    move    #64,$b8+$dff000
+    move    #1,$c8+$dff000
+  else
+    move    #64,$a8+$dff000
+    move    #0,$d8+$dff000
+    move    #64,$b8+$dff000
+    move    #0,$c8+$dff000   
+  endif
+    rts
 
- switchAndFillBuffer:
+residClearVolume:
+    clr     $dff0a8
+    clr     $dff0b8
+    clr     $dff0c8
+    clr     $dff0d8
+    rts
+
+switchAndFillBuffer:
+  ifne DEBUG
+    * Debug color
+    move    bob1,$dff180
+    not	    bob1
+  endif
+
     * Switch buffers
     movem.l buffer1p(pc),d0/d1/a1/a2
     movem.l d0/d1,buffer2p
@@ -7868,7 +7876,6 @@ reSIDWorkerEntryPoint
     move.l  a1,$b0+$dff000 
     move.l  a2,$c0+$dff000 
  
-
 fillBuffer:
     lea     Sid,a0
     ;movem.l buffer1p(pc),a1/a2
@@ -7908,8 +7915,9 @@ reSIDLevel4Handler1
 ;  A5 - jump vector register (scratch on call)
 ;  A6 - Exec library base pointer (scratch on call)
 ;       all other registers must be preserve
+;       Softints must preserve a6
 
-reSIDLevel1Handler:
+residLevel1Handler:
    	movem.l d2-d7/a2-a4/a6,-(sp)
     bsr.b   switchAndFillBuffer
    	movem.l (sp)+,d2-d7/a2-a4/a6
@@ -7930,11 +7938,11 @@ dmawait
 
 * In:
 *   d0 = reSID mode to test, RM_NORMAL... etc
-@MeasureRESIDPerformance:
+@MeasureResidPerformance:
  if DEBUG
     ext.l   d0
  endif
-    DPRINT  "MeasureRESIDPerformance %ld"
+    DPRINT  "MeasureResidPerformance %ld"
     movem.l d2-d7/a2-a6,-(sp)
 
     moveq   #SAMPLING_METHOD_OVERSAMPLE2x14,d4
@@ -7958,7 +7966,7 @@ dmawait
     cmp     #36,d0
     blo     .x
     ;----------------------------------
-    lea     .timerDeviceName(pc),a0
+    lea     timerDeviceName(pc),a0
     moveq	#UNIT_ECLOCK,d0
     moveq	#0,d1
     lea     timerRequest(pc),a1
@@ -8076,7 +8084,7 @@ dmawait
     bra     .x
 
 
-.timerDeviceName dc.b	"timer.device",0
+timerDeviceName dc.b	"timer.device",0
 	even
 
 
@@ -8186,32 +8194,42 @@ buffer1p          dc.l    0
 buffer2p          dc.l    0
                   dc.l    0
 mainTask          dc.l    0
-reSIDWorkerTask:  dc.l    0
+residWorkerTask:  dc.l    0
 oldVecAud0        dc.l    0
- 
+residTimerRequest      ds.b    IOTV_SIZE
+residClock             ds.b    EV_SIZE
+framePending           dc.w    0
+frameCount             dc.w    0
+framesSkipped          dc.w    0
+  ifne DEBUG
+bob1
+     dc.w   $0f0
+  endif
 
-reSIDLevel4Intr1	
+
+residLevel4Intr1	
         dc.l	0		; Audio Interrupt
         dc.l	0
         dc.b	2
         dc.b	0
-        dc.l	reSIDLevel4Name1
-reSIDLevel4Intr1Data:
+        dc.l	residLevel4Name1
+residLevel4Intr1Data:
         dc.l	0		            ;is_Data
-        dc.l	reSIDLevel4Handler1	;is_Code
+        dc.l	residLevel4Handler1	;is_Code
 
-reSIDLevel4Name1
+residLevel4Name1
     dc.b    "reSID Audio",0
     even
 
-reSIDLevel1Intr
+residLevel1Intr
       	dc.l	0
         dc.l	0
         dc.b	2
         dc.b	0
-        dc.l    reSIDLevel4Name1    
+        dc.l    residLevel4Name1    
+residLevel1Data:
         dc.l	0
-        dc.l	reSIDLevel1Handler
+        dc.l	residLevel1Handler
 
 
 
