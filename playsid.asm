@@ -7934,23 +7934,23 @@ residLevel4Handler1
     basereg residLevel1Intr,a1
     
     * Keep track of audio frames
-    addq.w  #1,frameCount(a1)
+    ;addq.w  #1,frameCount(a1)
     * Check if lev1 is done with the previous frame
     tst.b   framePending(a1)
     beq.b   .1
     * Keep track of skipped frames
-    addq.w  #1,framesSkipped(a1)
+    ;addq.w  #1,framesSkipped(a1)
     move    #$f00,$dff180
-    bra.b    .stopCheck
-.1
-    bsr.b   .stopCheck
-    bne.b   .2
     rts
-.2  
+;    bra.b    .stopCheck
+.1
+;    bsr.b   .stopCheck
+;    bne.b   .2
+;    rts
+;.2  
     * Start processing a new frame
     st      framePending(a1)
     jmp     _LVOCause(a6)
- endif
 
 * Every 256 frames check how many skipped 
 * frames there are. Stop if too many.
@@ -7975,6 +7975,8 @@ residLevel4Handler1
     rts
 
     endb    a1
+
+ endif
 
 
 dmawait
