@@ -450,7 +450,7 @@ SetDefaultOperatingMode:
  if DEBUG
         ext.l   d0
         ext.l   d1
-        DPRINT  "SetOperatingMode %ld resid=%ld"
+        DPRINT  "SetOperatingMode mode=%ld resid=%ld"
  endif
     	move.w	d0,psb_OperatingMode(a6)
     	move.w	d1,psb_ResidMode(a6)
@@ -7559,18 +7559,17 @@ initResid
     DPRINT  "residmode=%ld"
 
  if ENABLE_14BIT
-    move    psb_ResidMode(a6),d1
-    moveq   #SAMPLING_METHOD_OVERSAMPLE2x14,d0
-    cmp     #REM_OVERSAMPLE2,d1
+    moveq   #SAMPLING_METHOD_OVERSAMPLE2x14,d1
+    cmp     #REM_OVERSAMPLE2,d0
     beq.b   .go
-    moveq   #SAMPLING_METHOD_OVERSAMPLE3x14,d0
-    cmp     #REM_OVERSAMPLE3,d1
+    moveq   #SAMPLING_METHOD_OVERSAMPLE3x14,d1
+    cmp     #REM_OVERSAMPLE3,d0
     beq.b   .go
-    moveq   #SAMPLING_METHOD_OVERSAMPLE4x14,d0
-    cmp     #REM_OVERSAMPLE4,d1
+    moveq   #SAMPLING_METHOD_OVERSAMPLE4x14,d1
+    cmp     #REM_OVERSAMPLE4,d0
     beq.b   .go
-    moveq   #SAMPLING_METHOD_INTERPOLATE14,d0
-    cmp     #REM_INTERPOLATE,d1
+    moveq   #SAMPLING_METHOD_INTERPOLATE14,d1
+    cmp     #REM_INTERPOLATE,d0
     beq.b   .go
     ; Default
     moveq   #SAMPLING_METHOD_SAMPLE_FAST14,d1
@@ -7582,14 +7581,21 @@ initResid
  if DEBUG
     moveq   #0,d0
     move.b  d1,d0
-    DPRINT  "sampling mode=%ld"
+    DPRINT  "sampling method=%ld"
  endif
-
+    * d1 = sampling method
     move.l  #985248,d0
     move.l  #PAULA_PERIOD,d2
     move.l  psb_reSID(a6),a0
     jsr     sid_set_sampling_parameters_paula
     move.l  a1,clockRoutine
+
+ if DEBUG
+    push    d0
+    move.l  a1,d0
+    DPRINT  "clockRoutine=%lx"
+    pop     d0
+ endif
 
     * Calculate how many cycles are needed per a 1/100s 
     * frame as accurately as possible.
@@ -7603,7 +7609,7 @@ initResid
     move.l  d0,cyclesPerFrame
 
  if DEBUG
-    DPRINT  "Cycles per frame=%lx"
+    DPRINT  "Cycles per frame=%ld"
  endif
 
     move.l  psb_reSID(a6),a0
@@ -7752,8 +7758,8 @@ residWorkerEntryPoint
     * Max softint priority
     move.b  #32,LN_PRI+residLevel1Intr
 
-    clr.l   frameCount
-    clr.l   framesSkipped
+    clr.w   frameCount
+    clr.w   framesSkipped
 
     ; Stop all 
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
@@ -7988,23 +7994,31 @@ dmawait
  if DEBUG
     ext.l   d0
  endif
-    DPRINT  "MeasureResidPerformance %ld"
     movem.l d2-d7/a2-a6,-(sp)
 
     moveq   #SAMPLING_METHOD_OVERSAMPLE2x14,d4
     cmp.b   #REM_OVERSAMPLE2,d0
     beq.b   .go
+
     moveq   #SAMPLING_METHOD_OVERSAMPLE3x14,d4
     cmp.b   #REM_OVERSAMPLE3,d0
     beq.b   .go
+
     moveq   #SAMPLING_METHOD_OVERSAMPLE4x14,d4
     cmp.b   #REM_OVERSAMPLE4,d0
     beq.b   .go
+
     moveq   #SAMPLING_METHOD_INTERPOLATE14,d4
     cmp.b   #REM_INTERPOLATE,d0
     beq.b   .go
     moveq   #SAMPLING_METHOD_SAMPLE_FAST14,d4
 .go
+  if DEBUG
+    and.l   #$ff,d0
+    move.l  d4,d1
+    DPRINT  "MeasureResidPerformance REM=%ld METHOD=%ld"
+  endif
+
     ;----------------------------------
     moveq   #-1,d7
     move.l	4.w,a6
@@ -8038,6 +8052,15 @@ dmawait
     jsr     sid_set_sampling_parameters_paula
     move.l  a1,a4       * grab the clock routine
 
+ if DEBUG
+    push    d0
+    move.l  d4,d0
+    move.l  a1,d1
+    DPRINT  "samplingMode=%ld clockRoutine=%lx"
+    pop     d0
+ endif
+
+
     move.l  #SAMPLES_PER_FRAME,d0
     lea     Sid,a0
     mulu.l  sid_cycles_per_sample(a0),d1:d0
@@ -8045,7 +8068,7 @@ dmawait
     * the correct position
     divu.l  #1<<(16+10),d1:d0
     move.l  d0,d5
-    DPRINT  "cycles per sample=%ld"
+    DPRINT  "cycles per frame=%ld"
 
     ;----------------------------------
 
