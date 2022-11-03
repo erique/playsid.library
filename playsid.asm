@@ -7876,12 +7876,6 @@ residClearVolume:
     rts
 
 switchAndFillBuffer:
-  ifne DEBUG
-    * Debug color
-    move    bob1,$dff180
-    not	    bob1
-  endif
-
     * Switch buffers
     movem.l buffer1p(pc),d0/d1/a1/a2
     movem.l d0/d1,buffer2p
@@ -7923,8 +7917,14 @@ fillBuffer:
 
 residLevel1Handler:
    	movem.l d2-d7/a2-a4/a6,-(sp)
+ ifne DEBUG
+    move    #$ff0,$dff180
+ endif
     bsr.b   switchAndFillBuffer
     clr.w   framePending
+ ifne DEBUG
+    clr     $dff180
+ endif
    	movem.l (sp)+,d2-d7/a2-a4/a6
     rts
 
@@ -7948,7 +7948,9 @@ residLevel4Handler1
     beq.b   .1
     * Keep track of skipped frames
     ;addq.w  #1,framesSkipped(a1)
+ ifne DEBUG
     move    #$f00,$dff180
+ endif
     rts
 ;    bra.b    .stopCheck
 .1
