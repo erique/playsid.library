@@ -47,6 +47,8 @@ SAMPLES_PER_FRAME = 141876
 *SAMPLE_BUFFER_SIZE = 277+1  * 277.101171875
 SAMPLE_BUFFER_SIZE = 140     * 138.550585
 
+DISABLE_RESID_EXTFILTER = 1
+
 * Enable debug logging into a console window
 DEBUG = 0
 
@@ -7625,6 +7627,12 @@ initResid
     move.l  psb_reSID(a6),a0
     jsr     sid_set_chip_model
 
+ ifne DISABLE_RESID_EXTFILTER
+    moveq   #0,d0
+    move.l  psb_reSID(a6),a0
+    jsr     sid_enable_external_filter
+ endif 
+
     movem.l (sp)+,d1-a6
     rts
 
@@ -7993,9 +8001,6 @@ dmawait
 * In:
 *   d0 = reSID mode to test, RM_NORMAL... etc
 @MeasureResidPerformance:
- if DEBUG
-    ext.l   d0
- endif
     movem.l d2-d7/a2-a6,-(sp)
 
     moveq   #SAMPLING_METHOD_OVERSAMPLE2x14,d4
@@ -8054,14 +8059,17 @@ dmawait
     jsr     sid_set_sampling_parameters_paula
     move.l  a1,a4       * grab the clock routine
 
+ ifne DISABLE_RESID_EXTFILTER
+    moveq   #0,d0
+    lea     Sid,a0
+    jsr     sid_enable_external_filter
+ endif 
+
  if DEBUG
-    push    d0
     move.l  d4,d0
     move.l  a1,d1
     DPRINT  "samplingMode=%ld clockRoutine=%lx"
-    pop     d0
  endif
-
 
     move.l  #SAMPLES_PER_FRAME,d0
     lea     Sid,a0
