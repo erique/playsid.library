@@ -7886,9 +7886,8 @@ switchAndFillBuffer:
     move.l  a1,$b0+$dff000 
     move.l  a2,$c0+$dff000 
  
-fillBuffer:
     lea     Sid,a0
-    ;movem.l buffer1p(pc),a1/a2
+    * output buffer pointers a1 and a2 set above
     move.l  cyclesPerFrame(pc),d0
     * buffer size limit
     move.l  #SAMPLE_BUFFER_SIZE,d1
@@ -8000,8 +7999,12 @@ dmawait
 	rts
 
 
+* Calculates four frames of sound and measures the time taken.
 * In:
 *   d0 = reSID mode to test, RM_NORMAL... etc
+* Out:
+*   d0 = millisecs taken
+*   d1 = reference value 
 @MeasureResidPerformance:
     movem.l d2-d7/a2-a6,-(sp)
 
