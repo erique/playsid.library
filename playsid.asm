@@ -7766,9 +7766,6 @@ residWorkerEntryPoint
     * Max softint priority
     move.b  #32,LN_PRI+residLevel1Intr
 
-    clr.w   frameCount
-    clr.w   framesSkipped
-
     ; Stop all 
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
@@ -7940,51 +7937,18 @@ residLevel4Handler1
     * a1 = residLevel1Intr
     basereg residLevel1Intr,a1
     
-    * Keep track of audio frames
-    ;addq.w  #1,frameCount(a1)
     * Check if lev1 is done with the previous frame
     tst.b   framePending(a1)
     beq.b   .1
-    * Keep track of skipped frames
-    ;addq.w  #1,framesSkipped(a1)
  ifne DEBUG
     move    #$f00,$dff180
  endif
     rts
-;    bra.b    .stopCheck
 .1
-;    bsr.b   .stopCheck
-;    bne.b   .2
-;    rts
-;.2  
     * Start processing a new frame
     st      framePending(a1)
     jmp     _LVOCause(a6)
-
-* Every 256 frames check how many skipped 
-* frames there are. Stop if too many.
-* 256 frames * 1/200s = 1.28 seconds
-.stopCheck
-    cmp.w   #256,frameCount(a1)
-    blo.b   .4
-    move.w  framesSkipped(a1),d0
-    clr.w   frameCount(a1)
-    clr.w   framesSkipped(a1)
-    cmp.w   #32,d0
-    blo.b   .4
-    * Stop playing, at least ~13% frames skipped
-    move.w  #INTF_AUD0,intena+$dff000
-    move.l  residWorkerTask(pc),a1
-    move.l  #SIGBREAKF_CTRL_C,d0
-    jsr     _LVOSignal(a6)
-    moveq   #0,d0
-    rts
-.4
-    moveq   #1,d0
-    rts
-
     endb    a1
-
  endif
 
 
@@ -8283,8 +8247,6 @@ oldVecAud0        dc.l    0
 residTimerRequest      ds.b    IOTV_SIZE
 residClock             ds.b    EV_SIZE
 framePending           dc.w    0
-frameCount             dc.w    0
-framesSkipped          dc.w    0
   ifne DEBUG
 bob1
      dc.w   $0f0
