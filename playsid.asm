@@ -7503,8 +7503,11 @@ _PlaySidBase	ds.l	1
         section    reSID1,code
 
   ifd __VASM
-    ; Optimize stuff below
+    ; Turn on optimization for reSID
     opt o+
+    ; Disable "move.l to moveq" optimization, it may add "swap" which is
+    ; pOEP-only
+    opt o4-
   endif
 
         include resid-68k.s
@@ -7765,6 +7768,8 @@ residWorkerEntryPoint
  endif
     * Max softint priority
     move.b  #32,LN_PRI+residLevel1Intr
+    * Store this for easy access
+    move.l  #buffer1p,residLevel1Data
 
     ; Stop all 
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
@@ -7787,6 +7792,8 @@ residWorkerEntryPoint
     
     bsr     residSetVolume
 
+    lea     $dff000,a0
+    lea     buffer1p(pc),a1
     bsr     switchAndFillBuffer
     bsr     dmawait     * probably not needed
     
@@ -7824,6 +7831,8 @@ residWorkerEntryPoint
 
   ifeq ENABLE_LEV4PLAY
     push    a6
+    lea     buffer1p(pc),a1
+    lea     $dff000,a0
     bsr     switchAndFillBuffer
     pop     a6
   endif
@@ -7872,24 +7881,39 @@ residClearVolume:
     clr     $dff0d8
     rts
 
+* in:
+*   a0 = $dff000 
+*   a1 = buffer1p address
 switchAndFillBuffer:
     * Switch buffers
-    movem.l buffer1p(pc),d0/d1/a1/a2
-    movem.l d0/d1,buffer2p
-    movem.l a1/a2,buffer1p
+    basereg buffer1p,a1
+    move.l  buffer1p+0(a1),d0
+    move.l  buffer1p+4(a1),d1
+    move.l  buffer2p+0(a1),a1
+    move.l  buffer2p+4(a1),a2
 
-    move.l  a1,$a0+$dff000 
-    move.l  a2,$d0+$dff000 
-    move.l  a1,$b0+$dff000 
-    move.l  a2,$c0+$dff000 
+    move.l  d0,buffer2p+0(a1)
+    move.l  d1,buffer2p+4(a1)
+    move.l  a1,buffer1p+0(a1)
+    move.l  a2,buffer1p+4(a1)
+    endb    a1
+
+;    movem.l buffer1p(pc),d0/d1/a1/a2
+;    movem.l d0/d1,buffer2p
+;    movem.l a1/a2,buffer1p
+
+    move.l  a1,$a0(a0) 
+    move.l  a2,$d0(a0) 
+    move.l  a1,$b0(a0) 
+    move.l  a2,$c0(a0) 
  
     lea     Sid,a0
     * output buffer pointers a1 and a2 set above
     move.l  cyclesPerFrame(pc),d0
     * buffer size limit
     move.l  #SAMPLE_BUFFER_SIZE,d1
-    move.l   clockRoutine(pc),a3
-    jsr      (a3)
+    move.l  clockRoutine(pc),a3
+    jsr     (a3)
     * d0 = bytes received, make words
     * rounds down, so may discard one byte
     lsr     #1,d0
@@ -7911,10 +7935,12 @@ switchAndFillBuffer:
 ;       all other registers must be preserve
 ;       Softints must preserve a6
 
+* a0 = $dff000
+* a1 = IS_Data = buffer1p address
 residLevel1Handler:
    	movem.l d2-d7/a2-a4/a6,-(sp)
  ifne DEBUG
-    move    #$ff0,$dff180
+    move    #$ff0,$180(a0)
  endif
     bsr.b   switchAndFillBuffer
     clr.w   framePending
@@ -8237,10 +8263,10 @@ clockEnd          ds.b    EV_SIZE
 cyclesPerFrame    dc.l    0
 clockRoutine      dc.l    0
 bufferMemoryPtr   dc.l    0
-buffer1p          dc.l    0
-                  dc.l    0
-buffer2p          dc.l    0
-                  dc.l    0
+buffer1p          dc.l    0 * buffer 1 pointer: 14-bit hi byte
+                  dc.l    0 * buffer 1 pointer: 14-bit lo byte
+buffer2p          dc.l    0 * buffer 2 pointer: 14-bit hi byte
+                  dc.l    0 * buffer 2 pointer: 14-bit lo byte
 mainTask          dc.l    0
 residWorkerTask:  dc.l    0
 oldVecAud0        dc.l    0
