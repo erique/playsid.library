@@ -23,7 +23,7 @@ ENABLE_REGDUMP  = 0
 ; Set to 0 to do playback in a task.
 ; This will not hang the system but music playback
 ; will easily be disturbed by other things happening 
-; in the system. Also has debug color!
+; in the system. 
   ifnd ENABLE_LEV4PLAY
 ENABLE_LEV4PLAY = 1
   endif
@@ -44,13 +44,18 @@ PAL_CLOCK=3546895
 SAMPLES_PER_FRAME = 141876
 
 * Output buffer size 
+* 100 Hz
 *SAMPLE_BUFFER_SIZE = 277+1  * 277.101171875
+* 200 Hz
 SAMPLE_BUFFER_SIZE = 140     * 138.550585
 
+* Set to 1 to disable the reSID extfilter. This saves some CPU
+* and does not have an effect with the sampling modes available.
 DISABLE_RESID_EXTFILTER = 1
 
 * Enable debug logging into a console window
-DEBUG = 0
+* Enable debug colors
+DEBUG = 1
 
 * Macro to print to debug console
 DPRINT  macro
@@ -7634,6 +7639,7 @@ initResid
     moveq   #0,d0
     move.l  psb_reSID(a6),a0
     jsr     sid_enable_external_filter
+    DPRINT  "extfilter disabled"
  endif 
 
     movem.l (sp)+,d1-a6
