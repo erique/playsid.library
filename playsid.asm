@@ -55,7 +55,7 @@ DISABLE_RESID_EXTFILTER = 1
 
 * Enable debug logging into a console window
 * Enable debug colors
-DEBUG = 1
+DEBUG = 0
 
 * Macro to print to debug console
 DPRINT  macro
@@ -7798,7 +7798,6 @@ residWorkerEntryPoint
     
     bsr     residSetVolume
 
-    lea     $dff000,a0
     lea     buffer1p(pc),a1
     bsr     switchAndFillBuffer
     bsr     dmawait     * probably not needed
@@ -7838,7 +7837,6 @@ residWorkerEntryPoint
   ifeq ENABLE_LEV4PLAY
     push    a6
     lea     buffer1p(pc),a1
-    lea     $dff000,a0
     bsr     switchAndFillBuffer
     pop     a6
   endif
@@ -7888,30 +7886,32 @@ residClearVolume:
     rts
 
 * in:
-*   a0 = $dff000 
 *   a1 = buffer1p address
 switchAndFillBuffer:
     * Switch buffers
-    basereg buffer1p,a1
-    move.l  buffer1p+0(a1),d0
-    move.l  buffer1p+4(a1),d1
-    move.l  buffer2p+0(a1),a1
-    move.l  buffer2p+4(a1),a2
+ ;REM
+    move.l  a1,a0
+    basereg buffer1p,a0
+    move.l  buffer1p+0(a0),d0
+    move.l  buffer1p+4(a0),d1
+    move.l  buffer2p+0(a0),a1
+    move.l  buffer2p+4(a0),a2
 
-    move.l  d0,buffer2p+0(a1)
-    move.l  d1,buffer2p+4(a1)
-    move.l  a1,buffer1p+0(a1)
-    move.l  a2,buffer1p+4(a1)
-    endb    a1
+    move.l  d0,buffer2p+0(a0)
+    move.l  d1,buffer2p+4(a0)
+    move.l  a1,buffer1p+0(a0)
+    move.l  a2,buffer1p+4(a0)
+    endb    a0
+; EREM
 
 ;    movem.l buffer1p(pc),d0/d1/a1/a2
 ;    movem.l d0/d1,buffer2p
 ;    movem.l a1/a2,buffer1p
 
-    move.l  a1,$a0(a0) 
-    move.l  a2,$d0(a0) 
-    move.l  a1,$b0(a0) 
-    move.l  a2,$c0(a0) 
+    move.l  a1,$a0+$dff000 
+    move.l  a2,$d0+$dff000 
+    move.l  a1,$b0+$dff000 
+    move.l  a2,$c0+$dff000 
  
     lea     Sid,a0
     * output buffer pointers a1 and a2 set above
@@ -7941,12 +7941,11 @@ switchAndFillBuffer:
 ;       all other registers must be preserve
 ;       Softints must preserve a6
 
-* a0 = $dff000
 * a1 = IS_Data = buffer1p address
 residLevel1Handler:
    	movem.l d2-d7/a2-a4/a6,-(sp)
  ifne DEBUG
-    move    #$ff0,$180(a0)
+    move    #$ff0,$dff180
  endif
     bsr.b   switchAndFillBuffer
     clr.w   framePending
