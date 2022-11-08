@@ -15,6 +15,7 @@ ENABLE_14BIT    = 1
 
 ; Set to 1 to save SID register dump into a file
 ENABLE_REGDUMP  = 0
+REGDUMP_SIZE    = 100000
 
 ; Set to 1 to do playback in interrupts.
 ; This makes the audio smooth and uninterruptible,
@@ -437,13 +438,18 @@ SetDefaultOperatingMode:
         move.w  #-1,psb_OperatingMode(a6)
 .Exit		
 
+
+  if ENABLE_REGDUMP
+        move.l  a6,-(sp)
+        move.l  psb_DOSBase(a6),a6
+        jsr     saveDump
+        move.l  (sp)+,a6
+  endif
+
         move.l  psb_DOSBase(a6),a1
         move.l  4.w,a6
         jsr     _LVOCloseLibrary(a6)
 
-  if ENABLE_REGDUMP
-        jsr     saveDump
-  endif
         movem.l	(a7)+,d2-d7/a2-a6
 		;CALLEXEC Permit
 		rts
@@ -4207,7 +4213,7 @@ writeSIDRegister:
     movem.l d0-d2/a0/a1,-(sp)
  ifne ENABLE_REGDUMP
     move.l  regDumpOffset,d0
-    cmp.l   #10000,d0
+    cmp.l   #REGDUMP_SIZE,d0
     bhs.b   .1
     addq.l  #1,regDumpOffset
     lea     regDump,a1
@@ -8315,7 +8321,8 @@ saveDump
     lea     .d(pc),a0
     lea     regDump,a1
     move.l  regDumpOffset,d0
-    mulu    #4,d0
+    DPRINT  "save reg dump offset=%ld"
+    mulu.l  #4,d0
     bsr     plainSaveFile
     rts
 
@@ -8327,16 +8334,13 @@ saveDump
 *  a0 = file path
 *  a1 = data address
 *  d0 = data length
+*  a6 = dos base
 * out: 
 *  d0 = Written bytes or -1 if error
 plainSaveFile:
 	movem.l	d1-a6,-(sp)
-	movem.l d0/a0/a1,-(sp)
-    move.l  4.w,a6
-    lea     _DOSName(pc),a1
-    jsr     _LVOOldOpenLibrary(a6)
-    move.l  d0,a6
-	movem.l (sp)+,d0/a0/a1
+    tst.l   a6
+    beq     .openErr
 
     moveq	#-1,d7
 	move.l	a1,d4
@@ -8352,11 +8356,13 @@ plainSaveFile:
 	move.l	d4,d2	* buffer
 	move.l	d5,d3  	* len
 	jsr     _LVOWrite(a6)
+    DPRINT  "write=%ld"
 	move.l  d0,d7 
 
 	move.l	d6,d1 
 	jsr     _LVOClose(a6)
 .openErr 
+
 	move.l	d7,d0
 	movem.l (sp)+,d1-a6
 	rts
@@ -8372,7 +8378,7 @@ regDumpTime         ds.w    1
 regDumpOffset       ds.l    1
 regDump
     * time(w),reg(b),data(b)
-    ds.l    10000
+    ds.l    REGDUMP_SIZE
   endif
 
  if DEBUG
