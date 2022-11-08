@@ -64,7 +64,7 @@ This will cause the sound to be distorted.
 
 The sound is output using the Paula 14-bit mode.
 
-reSID Amiga port and integration by K-P
+reSID v0.16 Amiga port and integration by K-P
 
 
 SIDBlaster
@@ -86,6 +86,6 @@ SIDBlaster driver and integration by Erique
 
 Changelog
 ---------
-- 2022-10: Initial version
+- 2022-10: Initial version, reSID v0.16
 - 2022-11: SIDBlaster support, new reSID sampling modes, 
-           reSID speed optimizations 
+           reSID speed optimizations, some fixes
