@@ -4210,7 +4210,7 @@ writeSIDRegister:
 
     * OM_RESID_6581, OM_RESID_8580
 
-    movem.l d0-d2/a0/a1,-(sp)
+    movem.l d0-a6,-(sp)
  ifne ENABLE_REGDUMP
     move.l  regDumpOffset,d0
     cmp.l   #REGDUMP_SIZE,d0
@@ -4228,7 +4228,7 @@ writeSIDRegister:
     move.l  psb_reSID(a2),a0
     jsr     sid_write
     moveq   #1,d0
-    movem.l (sp)+,d0-d2/a0/a1
+    movem.l (sp)+,d0-a6
     rts
 
 *-----------------------------------------------------------------------*
