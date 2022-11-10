@@ -2,3 +2,6 @@
 *.uaem
 *~
 /playsid.txt
+*.map
+*.o
+test_blaster
