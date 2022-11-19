@@ -89,3 +89,5 @@ Changelog
 - 2022-10: Initial version, reSID v0.16
 - 2022-11: SIDBlaster support, new reSID sampling modes, 
            reSID speed optimizations, some fixes
+- 2022-11-19: Fix bug where playback would get stuck for a while, 
+              example tune: JCH/Hawaii
