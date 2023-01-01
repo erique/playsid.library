@@ -194,7 +194,7 @@ AutoInitFunction
 		move.l	a6,psb_SysLib(a5)
 		move.l	a0,psb_SegList(a5)
 		move.l	a5,_PlaySidBase
-        move.l  #Sid,psb_reSID(a5)
+        move.l  #residData,psb_reSID(a5)
 
 		lea	Display,a2
 		move.l	a2,psb_DisplayData(a5)
@@ -7509,6 +7509,9 @@ AttackTable	ds.l	$100
 _CiabBase	ds.l	1
 _PlaySidBase	ds.l	1
 
+residData      ds.b    resid_SIZEOF
+residData2     ds.b    resid_SIZEOF
+
 *-----------------------------------------------------------------------*
 
 
@@ -7937,7 +7940,7 @@ switchAndFillBuffer:
     move.l  a1,$b0+$dff000 
     move.l  a2,$c0+$dff000 
  
-    lea     Sid,a0
+    lea     residData,a0
     * output buffer pointers a1 and a2 set above
     move.l  cyclesPerFrame(pc),d0
     * buffer size limit
@@ -8113,7 +8116,7 @@ dmawait
  endif
 
     move.l  #SAMPLES_PER_FRAME,d0
-    lea     Sid,a0
+    lea     residData,a0
     mulu.l  sid_cycles_per_sample(a0),d1:d0
     * Shift by 16 and 10 to get the FP to 
     * the correct position
@@ -8139,7 +8142,7 @@ dmawait
     move.l  d5,d0  * cycles
     lsl.l   #2,d0  * do 4 frames
     move.l  #(4*SAMPLE_BUFFER_SIZE),d1 * buffer limit
-    lea     Sid,a0
+    lea     residData,a0
     jsr     (a4)    * call clock routine
     move.l  (sp)+,d6
 
@@ -8180,7 +8183,7 @@ dmawait
 
     ;----------------------------------
 
-    lea     Sid,a0
+    lea     residData,a0
     jsr     sid_reset
 
 .error2
@@ -8296,7 +8299,7 @@ pokeSound:
     rts    
 
 .write  
-    lea     Sid,a0
+    lea     residData,a0
     jmp     sid_write
 
 
