@@ -52,7 +52,7 @@ SAMPLE_BUFFER_SIZE = 140     * 138.550585
 
 * Set to 1 to disable the reSID extfilter. This saves some CPU
 * and does not have an effect with the sampling modes available.
-DISABLE_RESID_EXTFILTER = 1
+;DISABLE_RESID_EXTFILTER = 1
 
 * Enable debug logging into a console window
 * Enable debug colors
@@ -557,8 +557,11 @@ SetDefaultOperatingMode:
 		rts
 
 *-----------------------------------------------------------------------*
-@StartSong	;CALLEXEC Forbid
-        DPRINT  "StartSong"
+@StartSong	;CALLEXEC Forbid 
+ if DEBUG
+        ext.l   d0
+        DPRINT  "StartSong %ld"
+ endif
 		movem.l	d2-d7/a2-a6,-(a7)
 		tst.w	psb_SongSetFlag(a6)
 		bne.s	.SongOK
@@ -7543,10 +7546,20 @@ _PlaySidBase	ds.l	1
 .1  jmp     sid_set_chip_model
 
 * In:
-*   d0 = 0 or 1
+*   d0 = 0 or 1, disable or enable the filter
+*   d1 = 0 or 1, disable or enable the external filter
 @SetResidFilter
+  if DEBUG
+    and.l   #$ff,d0
+    and.l   #$ff,d1
+    DPRINT  "SetResidFilter internal=%ld external=%ld"
+  endif
     move.l  psb_reSID(a6),a0
-    jmp     sid_enable_filter
+    push    d1
+    jsr     sid_enable_filter
+    pop     d0
+    move.l  psb_reSID(a6),a0
+    jmp     sid_enable_external_filter
 
 * Out:
 *   d0 = buffer length in bytes
@@ -7641,12 +7654,10 @@ initResid
     move.l  psb_reSID(a6),a0
     jsr     sid_set_chip_model
 
- ifne DISABLE_RESID_EXTFILTER
     moveq   #0,d0
     move.l  psb_reSID(a6),a0
     jsr     sid_enable_external_filter
-    DPRINT  "extfilter disabled"
- endif 
+    DPRINT  "extfilter disabled by default"
 
     movem.l (sp)+,d1-a6
     rts
@@ -8003,11 +8014,17 @@ dmawait
 * Calculates four frames of sound and measures the time taken.
 * In:
 *   d0 = reSID mode to test, RM_NORMAL... etc
+*   d1 = Enable filter
+*   d2 = Enable extfilter
 * Out:
 *   d0 = millisecs taken
 *   d1 = reference value 
 @MeasureResidPerformance:
     movem.l d2-d7/a2-a6,-(sp)
+    * Stuff filter settings into d5 for later
+    move.b  d1,d5
+    lsl     #8,d5
+    move.b  d2,d5
 
     moveq   #SAMPLING_METHOD_OVERSAMPLE2x14,d4
     cmp.b   #REM_OVERSAMPLE2,d0
@@ -8055,21 +8072,32 @@ dmawait
     beq     .error2
     move.l  d0,d6
     ;----------------------------------
-    lea     Sid,a0
+    lea     residData,a0
     jsr	    sid_constructor
     
     move.l  #985248,d0
     move.b  d4,d1       * select sampling mode
     move.l  #PAULA_PERIOD,d2
-    lea     Sid,a0
+    lea     residData,a0
     jsr     sid_set_sampling_parameters_paula
     move.l  a1,a4       * grab the clock routine
-
- ifne DISABLE_RESID_EXTFILTER
-    moveq   #0,d0
-    lea     Sid,a0
+    
+    move.b  d5,d0
+ if DEBUG
+    and.l   #$ff,d0
+    DPRINT  "Perf: extfilter=%ld"
+ endif
+    lea     residData,a0
     jsr     sid_enable_external_filter
- endif 
+    lsr     #8,d5
+    move.b  d5,d0
+ if DEBUG
+    and.l   #$ff,d0
+    DPRINT  "Perf: filter=%ld"
+ endif
+    lea     residData,a0
+    jsr     sid_enable_filter
+
 
  if DEBUG
     move.l  d4,d0
