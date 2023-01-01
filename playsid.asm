@@ -7538,8 +7538,7 @@ _PlaySidBase	ds.l	1
 @SetVolume 
     move    d0,psb_Volume(a6)
     move.l  psb_reSID(a6),a0
-    move    d0,sid_volume(a0)
-    rts
+    jmp     sid_set_volume
 
 * In:
 *   d0 = 0 for 6581, 1 for 8580
@@ -7677,7 +7676,9 @@ allocResidMemory:
     cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
     bne.b   .y
 .z
-    * Allocate four audio buffers for stereo 14-bit capability
+    * Allocate four audio buffers
+    * Two per 14-bit channel
+    * Times two for double buffering
     move.l  #(SAMPLE_BUFFER_SIZE)*4,d0
     move.l  #MEMF_CHIP!MEMF_CLEAR,d1
     move.l  4.w,a6
