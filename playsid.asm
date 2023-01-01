@@ -537,6 +537,7 @@ SetDefaultOperatingMode:
 *-----------------------------------------------------------------------*
 @SetModule	;CALLEXEC Forbid
         DPRINT  "SetModule"
+        move.l  a1,-(sp)
 		cmpi.l	#SID_HEADER,(a1)		; have header?
 		bne.s	.1
 		move.w	sidh_length(a1),d1		; skip header
@@ -559,8 +560,39 @@ SetDefaultOperatingMode:
 .2		move.w	d0,psb_SongFlags(a6)
 
 		move.w	#1,psb_SongSetFlag(a6)
+        move.l  (sp)+,a1
+
+
+; +7A    BYTE secondSIDAddress
+; Valid values:
+; - 0x00 (PSID V2NG)
+; - 0x42 - 0x7F, 0xE0 - 0xFE Even values only (Version 3+)
+        clr     psb_Sid2Address(a6)
+        cmp     #3,sidh_version(a0)
+        blo.b   .x
+        move.b  $7a(a1),d0
+        btst    #0,d0
+        bne.b   .x
+        cmp.b   #$42,d0
+        blo.b   .x
+        cmp.b   #$7f,d0
+        bls.b   .sid2      
+        cmp.b   #$e0,d0
+        blo.b   .x  
+        cmp.b   #$fe,d0
+        bls.b   .sid2    
+.x
 		;CALLEXEC Permit
 		rts
+
+.sid2
+        and.l   #$ff,d0
+        lsl     #4,d0
+        add.l   #$d000,d0
+        move.w  d0,psb_Sid2Address(a6)
+        DPRINT  "2nd SID at %lx"
+        bsr     MakeMMUTable2
+        rts
 
 *-----------------------------------------------------------------------*
 @StartSong	;CALLEXEC Forbid 
@@ -3669,11 +3701,36 @@ MakeMMUTable
 	bne.s	.FixIO
 	rts
 
-.D400	dc.b	$80,$81,$82,$83,$84,$85,$86,$87	;$D400-$D418
+    * MMU bytes for SID, bit 7 is set
+.D400	
+    dc.b	$80,$81,$82,$83,$84,$85,$86,$87	;$D400-$D418
 	dc.b	$88,$89,$8a,$8b,$8c,$8d,$8e,$8f
 	dc.b	$90,$91,$92,$93,$94,$95,$96,$97
 	dc.b	$98,$00,$00,$00,$00,$00,$00,$00
 	
+* IO range for SID2, to be called after SetModule when the SID2 address is known
+MakeMMUTable2:
+	movem.l	d0-a6,-(a7)
+    moveq   #0,d0
+    move.w  psb_Sid2Address(a6),d0
+    beq.b   .1
+	move.l	psb_MMUMem(a6),a1
+    add.l   d0,a1
+    lea     .Sid2(pc),a0
+    moveq   #.Sid2e-.Sid2-1,d0
+.2  move.b  (a0)+,(a1)+
+    dbf     d0,.2
+.1	movem.l	(a7)+,d0-a6
+    rts
+
+    * MMU bytes for SID2, offset by $20
+.Sid2
+    dc.b	$80+$20,$81+$20,$82+$20,$83+$20,$84+$20,$85+$20,$86+$20,$87+$20
+	dc.b	$88+$20,$89+$20,$8a+$20,$8b+$20,$8c+$20,$8d+$20,$8e+$20,$8f+$20
+	dc.b	$90+$20,$91+$20,$92+$20,$93+$20,$94+$20,$95+$20,$96+$20,$97+$20
+	dc.b	$98+$20,$00,$00,$00,$00,$00,$00,$00
+.Sid2e
+
 *-----------------------------------------------------------------------*
 Jump6502Routine		;6502 CODE MUST BE ENDED WITH RTS!
 			;D0=AC,D1=XR,D2=YR,D3+D4+D5=P,D6=PC,D7=SP
@@ -3735,6 +3792,7 @@ ReadIO					;Read 64 I/O $D000-$DFFF
 	add.b	d6,d6
 	move.w	.JMP(pc,d6.w),d3
 	jmp	.JMP(pc,d3.w)
+
 .JMP
 	dc.w	.D400-.JMP		;80
 	dc.w	.D401-.JMP
@@ -3768,6 +3826,41 @@ ReadIO					;Read 64 I/O $D000-$DFFF
 
 	dc.w	.D418-.JMP		;98
 
+    ; Fill the gap
+    dc.w    0   ; D419
+    dc.w    0   ; D41A
+    dc.w    0   ; D41B
+    dc.w    0   ; D41C
+    dc.w    0   ; D41D
+    dc.w    0   ; D41E
+    dc.w    0   ; D41F
+
+	dc.w	.D420-.JMP		;80
+	dc.w	.D421-.JMP
+	dc.w	.D422-.JMP
+	dc.w	.D423-.JMP
+	dc.w	.D424-.JMP		;84
+	dc.w	.D425-.JMP
+	dc.w	.D426-.JMP
+	dc.w	.D427-.JMP
+	dc.w	.D428-.JMP		;88
+	dc.w	.D429-.JMP
+	dc.w	.D42A-.JMP
+	dc.w	.D42B-.JMP
+	dc.w	.D42C-.JMP		;8C
+	dc.w	.D42D-.JMP
+	dc.w	.D42E-.JMP
+	dc.w	.D42F-.JMP
+	dc.w	.D430-.JMP		;90
+	dc.w	.D431-.JMP
+	dc.w	.D432-.JMP
+	dc.w	.D433-.JMP
+	dc.w	.D434-.JMP		;94
+	dc.w	.D435-.JMP
+	dc.w	.D436-.JMP
+	dc.w	.D437-.JMP
+	dc.w	.D438-.JMP		;98
+    
 .D400						;80
 	move.w	#$D400,d7
 	move.b	0(a0,d7.l),d6
@@ -3869,13 +3962,45 @@ ReadIO					;Read 64 I/O $D000-$DFFF
 	move.b	0(a0,d7.l),d6
 	jmp	(a2)
 
+.D420
+.D421
+.D422
+.D423
+.D424
+.D425
+.D426
+.D427
+.D428
+.D429
+.D42A
+.D42B
+.D42C
+.D42D
+.D42E
+.D42F
+.D430
+.D431
+.D432
+.D433
+.D434
+.D435
+.D436
+.D437
+.D438
+    move    #$0f0,$dff180
+    clr.b   d6
+	jmp	    (a2)
+
 *-----------------------------------------------------------------------*
 WriteIO					;Write 64 I/O $D000-$DFFF
 					;D7=IOReg,D6=Byte,A2=Addr
 					;USAGE: D6,D7,A2
-	add.b	d7,d7
+    * d7 is a byte from the MMUTable, with bit 7 set
+    * Drop the 7th bit and make a word index.
+    add.b   d7,d7
 	move.w	.JMP(pc,d7.w),d7
 	jmp	.JMP(pc,d7.w)
+
 .JMP
 	dc.w	.D400-.JMP		;80
 	dc.w	.D401-.JMP
@@ -3908,6 +4033,73 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	dc.w	.D417-.JMP
 
 	dc.w	.D418-.JMP		;98
+    ;----------------------------------
+    ; Fill the gap
+    dc.w    0   ; D419
+    dc.w    0   ; D41A
+    dc.w    0   ; D41B
+    dc.w    0   ; D41C
+    dc.w    0   ; D41D
+    dc.w    0   ; D41E
+    dc.w    0   ; D41F
+
+	dc.w	.D420-.JMP		;80
+	dc.w	.D421-.JMP
+	dc.w	.D422-.JMP
+	dc.w	.D423-.JMP
+	dc.w	.D424-.JMP		;84
+	dc.w	.D425-.JMP
+	dc.w	.D426-.JMP
+	dc.w	.D427-.JMP
+	dc.w	.D428-.JMP		;88
+	dc.w	.D429-.JMP
+	dc.w	.D42A-.JMP
+	dc.w	.D42B-.JMP
+	dc.w	.D42C-.JMP		;8C
+	dc.w	.D42D-.JMP
+	dc.w	.D42E-.JMP
+	dc.w	.D42F-.JMP
+	dc.w	.D430-.JMP		;90
+	dc.w	.D431-.JMP
+	dc.w	.D432-.JMP
+	dc.w	.D433-.JMP
+	dc.w	.D434-.JMP		;94
+	dc.w	.D435-.JMP
+	dc.w	.D436-.JMP
+	dc.w	.D437-.JMP
+	dc.w	.D438-.JMP		;98
+
+.D420:
+.D421:
+.D422:
+.D423:
+.D424:
+.D425:
+.D426:
+.D427:
+.D428:
+.D429:
+.D42A:
+.D42B:
+.D42C:
+.D42D:
+.D42E:
+.D42F:
+.D430:
+.D431:
+.D432:
+.D433:
+.D434:
+.D435:
+.D436:
+.D437:
+.D438:
+    move    $dff006,$dff180
+    move    $dff006,$dff180
+    move    $dff006,$dff180
+    move    $dff006,$dff180
+    move    $dff006,$dff180
+    Next_Inst
 
 .D400						;80
 	move.w	#$D400,d7
