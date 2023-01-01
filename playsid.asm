@@ -7732,6 +7732,12 @@ residData2     ds.b    resid_SIZEOF
 
 @SetVolume 
     move    d0,psb_Volume(a6)
+    cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+    beq.b   .1
+    cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+    beq.b   .1
+    rts
+.1
     move.l  psb_reSID(a6),a0
     jmp     sid_set_volume
 
