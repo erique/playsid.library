@@ -347,6 +347,12 @@ AutoInitFunction
  ifne ENABLE_REGDUMP
         clr.l   regDumpOffset
  endif
+
+        move.l  4.w,a6
+        cmp     #37,LIB_VERSION(a6)
+        blo.b   .3
+        jsr     _LVOCacheClearU(a6)
+.3
         * Status: OK
         moveq	#0,d0
 .Exit
