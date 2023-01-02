@@ -195,6 +195,7 @@ AutoInitFunction
 		move.l	a0,psb_SegList(a5)
 		move.l	a5,_PlaySidBase
         move.l  #residData,psb_reSID(a5)
+        move.l  #residData2,psb_reSID2(a5)
 
 		lea	Display,a2
 		move.l	a2,psb_DisplayData(a5)
@@ -317,12 +318,12 @@ AutoInitFunction
         bne.b   .noBlaster
         bsr     start_sid_blaster
 		tst.l	d0
-        bne.b   .Exit
+        bne    .Exit
 .noBlaster
 
         bsr	    AllocEmulMem
 		tst.l	d0
-		bne.b 	.Exit
+		bne  	.Exit
 .MemOK		
         bsr	CheckCPU
 		bsr	Make6502Emulator
@@ -593,6 +594,12 @@ SetDefaultOperatingMode:
         DPRINT  "2nd SID at %lx"
         bsr     MakeMMUTable2
         rts
+
+
+sid2Enabled:
+    move.w  psb_Sid2Address(a6),d0
+    rts
+
 
 *-----------------------------------------------------------------------*
 @StartSong	;CALLEXEC Forbid 
@@ -3666,8 +3673,9 @@ Make6502Emulator
 *-----------------------------------------------------------------------*
 MakeMMUTable
 	move.l	psb_MMUMem(a6),a1
-	bsr.s	.Make
-	rts
+	bsr 	.Make
+    rts
+
 .Make
 	movem.l	a2-a3/d4-d7,-(a7)
 	move.l	a1,a2				;0000-D400
@@ -7701,6 +7709,7 @@ AttackTable	ds.l	$100
 _CiabBase	ds.l	1
 _PlaySidBase	ds.l	1
 
+; reSID data areas for two instances
 residData      ds.b    resid_SIZEOF
 residData2     ds.b    resid_SIZEOF
 
@@ -7738,18 +7747,30 @@ residData2     ds.b    resid_SIZEOF
     beq.b   .1
     rts
 .1
+    push    d0
     move.l  psb_reSID(a6),a0
-    jmp     sid_set_volume
+    jsr     sid_set_volume
+    pop     d0
 
+    move.l  psb_reSID2(a6),a0
+    jmp     sid_set_volume
+    
 * In:
 *   d0 = 0 for 6581, 1 for 8580
 @SetResidChipModel
-    move.l  psb_reSID(a6),a0
     moveq   #CHIP_MODEL_MOS6581,d0
     tst.b   d0
     beq     .1
     moveq   #CHIP_MODEL_MOS8580,d0
-.1  jmp     sid_set_chip_model
+.1  
+    push    d0
+    move.l  psb_reSID(a6),a0
+    jsr     sid_set_chip_model
+    pop     d0
+
+    move.l  psb_reSID2(a6),a0
+    jmp     sid_set_chip_model
+    
 
 * In:
 *   d0 = 0 or 1, disable or enable the filter
@@ -7760,19 +7781,37 @@ residData2     ds.b    resid_SIZEOF
     and.l   #$ff,d1
     DPRINT  "SetResidFilter internal=%ld external=%ld"
   endif
-    move.l  psb_reSID(a6),a0
+    pushm   d0/d1
+
     push    d1
+    move.l  psb_reSID(a6),a0
     jsr     sid_enable_filter
     pop     d0
     move.l  psb_reSID(a6),a0
+    jsr     sid_enable_external_filter
+
+    popm    d0/d1
+   
+    push    d1
+    move.l  psb_reSID2(a6),a0
+    jsr     sid_enable_filter
+    pop     d0
+    move.l  psb_reSID2(a6),a0
     jmp     sid_enable_external_filter
+
 
 * Out:
 *   d0 = buffer length in bytes
 *   d1 = period value used
-*   a0 = audio buffer pointer
+*   a0 = audio buffer pointer sid
+*   a1 = audio buffer pointer sid2
 @GetResidAudioBuffer
-    move.l  buffer1p,a0
+    move.l  sidBufferAHi,a0
+    move.l  a0,a1
+    tst.w   psb_Sid2Address(a6)
+    beq     .1
+    move.l  sid2BufferAHi,a1
+.1
     move.l  #SAMPLE_BUFFER_SIZE,d0
     move.l  #PAULA_PERIOD,d1
     rts
@@ -7786,6 +7825,8 @@ initResid
     DPRINT  "initResid"
     movem.l d1-a6,-(sp)
     move.l  psb_reSID(a6),a0
+    jsr     sid_constructor
+    move.l  psb_reSID2(a6),a0
     jsr     sid_constructor
 
 
@@ -7821,6 +7862,7 @@ initResid
     * d1 = sampling method
     move.l  #985248,d0
     move.l  #PAULA_PERIOD,d2
+    pushm   d0-d2
     move.l  psb_reSID(a6),a0
     jsr     sid_set_sampling_parameters_paula
     move.l  a1,clockRoutine
@@ -7831,6 +7873,11 @@ initResid
     DPRINT  "clockRoutine=%lx"
     pop     d0
  endif
+
+    popm    d0-d2
+    move.l  psb_reSID2(a6),a0
+    jsr     sid_set_sampling_parameters_paula
+
 
     * Calculate how many cycles are needed per a 1/100s 
     * frame as accurately as possible.
@@ -7849,6 +7896,8 @@ initResid
 
     move.l  psb_reSID(a6),a0
     jsr     sid_reset
+    move.l  psb_reSID2(a6),a0
+    jsr     sid_reset
 
     moveq   #CHIP_MODEL_MOS6581,d0
     cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
@@ -7857,13 +7906,21 @@ initResid
     bne.b   .1
     moveq   #CHIP_MODEL_MOS8580,d0
 .1
+    push    d0
     move.l  psb_reSID(a6),a0
+    jsr     sid_set_chip_model
+    pop     d0
+    move.l  psb_reSID2(a6),a0
     jsr     sid_set_chip_model
 
     moveq   #0,d0
     move.l  psb_reSID(a6),a0
     jsr     sid_enable_external_filter
     DPRINT  "extfilter disabled by default"
+
+    moveq   #0,d0
+    move.l  psb_reSID2(a6),a0
+    jsr     sid_enable_external_filter
 
     movem.l (sp)+,d1-a6
     rts
@@ -7877,10 +7934,10 @@ allocResidMemory:
     cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
     bne.b   .y
 .z
-    * Allocate four audio buffers
+    * Allocate 2x four audio buffers
     * Two per 14-bit channel
     * Times two for double buffering
-    move.l  #(SAMPLE_BUFFER_SIZE)*4,d0
+    move.l  #(SAMPLE_BUFFER_SIZE)*8,d0
     move.l  #MEMF_CHIP!MEMF_CLEAR,d1
     move.l  4.w,a6
     jsr     _LVOAllocMem(a6)
@@ -7889,14 +7946,11 @@ allocResidMemory:
 
     move.l  d0,a0
     move.l  a0,bufferMemoryPtr
-    lea     buffer1p(pc),a1
-    move.l  a0,(a1)+
+    lea     sidBufferAHi(pc),a1
+    moveq   #8-1,d0
+.1  move.l  a0,(a1)+
     lea     SAMPLE_BUFFER_SIZE(a0),a0
-    move.l  a0,(a1)+
-    lea     SAMPLE_BUFFER_SIZE(a0),a0
-    move.l  a0,(a1)+
-    lea     SAMPLE_BUFFER_SIZE(a0),a0
-    move.l  a0,(a1)+
+    dbf     d0,.1
 .y  moveq   #1,d0
 .x  tst.l   d0
     pop     a6
@@ -7904,7 +7958,10 @@ allocResidMemory:
 
 resetResid:
     move.l  psb_reSID(a6),a0
+    jsr     sid_reset
+    move.l  psb_reSID2(a6),a0
     jmp     sid_reset
+
 
 freeResidMemory:
     push    a6
@@ -8000,7 +8057,7 @@ residWorkerEntryPoint
     * Max softint priority
     move.b  #32,LN_PRI+residLevel1Intr
     * Store this for easy access
-    move.l  #buffer1p,residLevel1Data
+    move.l  #sidBufferAHi,residLevel1Data
 
     ; Stop all 
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
@@ -8023,7 +8080,7 @@ residWorkerEntryPoint
     
     bsr     residSetVolume
 
-    lea     buffer1p(pc),a1
+    lea     sidBufferAHi(pc),a1
     bsr     switchAndFillBuffer
     bsr     dmawait     * probably not needed
     
@@ -8061,7 +8118,7 @@ residWorkerEntryPoint
 
   ifeq ENABLE_LEV4PLAY
     push    a6
-    lea     buffer1p(pc),a1
+    lea     sidBufferAHi(pc),a1
     bsr     switchAndFillBuffer
     pop     a6
   endif
@@ -8110,28 +8167,93 @@ residClearVolume:
     clr     $dff0d8
     rts
 
+
+;  Interrupt register usage
+;  D0 - scratch
+;  D1 - scratch (on entry: active
+;       interrupts -> equals INTENA & INTREQ)
+;  A0 - scratch (on entry: pointer to base of custom chips
+;       for fast indexing)
+;  A1 - scratch (on entry: Interrupt's IS_DATA pointer)
+;  A5 - jump vector register (scratch on call)
+;  A6 - Exec library base pointer (scratch on call)
+;       all other registers must be preserve
+;       Softints must preserve a6
+
+* Level 4 interrupt handler
+* In:
+*   a0 = custom
+*   a1 = is_data
+*   a6 = execbase
+residLevel4Handler1
+    move.w  #INTF_AUD0,intreq(a0)
+ ifeq ENABLE_LEV4PLAY
+    * a1 = task
+    move.l  #SIGBREAKF_CTRL_D,d0
+    jmp     _LVOSignal(a6)
+ else
+    * a1 = residLevel1Intr
+    basereg residLevel1Intr,a1
+    
+    * Check if lev1 is done with the previous frame
+    tst.b   framePending(a1)
+    beq.b   .1
+ ifne DEBUG
+    ;move    #$f00,$dff180
+ endif
+    rts
+.1
+    * Start processing a new frame
+    st      framePending(a1)
+    jmp     _LVOCause(a6)
+    endb    a1
+ endif
+
+
+* Level 1 interrupt handler
+* In:
+*    a1 = IS_Data = sidBufferAHi address
+residLevel1Handler:
+   	movem.l d2-d7/a2-a4/a6,-(sp)
+ ifne DEBUG
+   ; move    #$ff0,$dff180
+ endif
+    bsr.b   switchAndFillBuffer
+    clr.w   framePending
+ ifne DEBUG
+   ; clr     $dff180
+ endif
+   	movem.l (sp)+,d2-d7/a2-a4/a6
+    rts
+
 * in:
 *   a1 = buffer1p address
 switchAndFillBuffer:
     * Switch buffers
- ;REM
-    move.l  a1,a0
-    basereg buffer1p,a0
-    move.l  buffer1p+0(a0),d0
-    move.l  buffer1p+4(a0),d1
-    move.l  buffer2p+0(a0),a1
-    move.l  buffer2p+4(a0),a2
 
-    move.l  d0,buffer2p+0(a0)
-    move.l  d1,buffer2p+4(a0)
-    move.l  a1,buffer1p+0(a0)
-    move.l  a2,buffer1p+4(a0)
-    endb    a0
+;    basereg buffer1p,a0
+
+;    move.l  buffer1p+0(a0),d0
+;    move.l  buffer1p+4(a0),d1
+;    move.l  buffer2p+0(a0),a1
+;    move.l  buffer2p+4(a0),a2
+;
+;    move.l  d0,buffer2p+0(a0)
+;    move.l  d1,buffer2p+4(a0)
+;    move.l  a1,buffer1p+0(a0)
+;    move.l  a2,buffer1p+4(a0)
 ; EREM
+	move.l	_PlaySidBase,a0
+    tst.w   psb_Sid2Address(a0)
+    bne.b   .sid2
 
-;    movem.l buffer1p(pc),d0/d1/a1/a2
-;    movem.l d0/d1,buffer2p
-;    movem.l a1/a2,buffer1p
+    basereg sidBufferAHi,a0
+    move.l  a1,a0
+    * Swap SID buffers A and B
+    movem.l sidBufferAHi(a0),d0/d1/a1/a2
+    movem.l d0/d1,sidBufferBHi(a0)
+    movem.l a1/a2,sidBufferAHi(a0)
+    endb    a0
 
     move.l  a1,$a0+$dff000 
     move.l  a2,$d0+$dff000 
@@ -8154,58 +8276,54 @@ switchAndFillBuffer:
     move    d0,$c4+$dff000   * words
     rts
 
+.sid2
+    basereg sidBufferAHi,a0
+    move.l  a1,a0
+    * Swap SID buffers A and B
+    movem.l sidBufferAHi(a0),d0/d1/a1/a2/a3/a4/a5/a6
+    movem.l d0/d1,sidBufferBHi(a0)
+    movem.l a1/a2,sidBufferAHi(a0)
 
-;  D0 - scratch
-;  D1 - scratch (on entry: active
-;       interrupts -> equals INTENA & INTREQ)
-;  A0 - scratch (on entry: pointer to base of custom chips
-;       for fast indexing)
-;  A1 - scratch (on entry: Interrupt's IS_DATA pointer)
-;  A5 - jump vector register (scratch on call)
-;  A6 - Exec library base pointer (scratch on call)
-;       all other registers must be preserve
-;       Softints must preserve a6
+    * Swap SID2 buffers A and B
+    ;movem.l sid2BufferAHi(a0),d0/d1/a3/a4
+    movem.l a3/a4,sid2BufferBHi(a0)
+    movem.l a5/a6,sid2BufferAHi(a0)
+    endb    a0
 
-* a1 = IS_Data = buffer1p address
-residLevel1Handler:
-   	movem.l d2-d7/a2-a4/a6,-(sp)
- ifne DEBUG
-    move    #$ff0,$dff180
- endif
-    bsr.b   switchAndFillBuffer
-    clr.w   framePending
- ifne DEBUG
-    clr     $dff180
- endif
-   	movem.l (sp)+,d2-d7/a2-a4/a6
+    move.l  a1,$a0+$dff000 
+    move.l  a2,$d0+$dff000 
+    move.l  a3,$b0+$dff000 
+    move.l  a4,$c0+$dff000 
+ 
+    ; SID 1
+
+    * output buffer pointers a1 and a2 set above
+    move.l  cyclesPerFrame(pc),d0
+    * buffer size limit
+    move.l  #SAMPLE_BUFFER_SIZE,d1
+    move.l  clockRoutine(pc),a3
+    lea     residData,a0
+    jsr     (a3)
+
+    ; SID 2
+
+    movem.l sid2BufferAHi(pc),a1/a2
+    move.l  cyclesPerFrame(pc),d0
+    * buffer size limit
+    move.l  #SAMPLE_BUFFER_SIZE,d1
+    move.l  clockRoutine(pc),a3
+    lea     residData2,a0
+    jsr     (a3)
+
+    * d0 = bytes received, make words
+    * rounds down, so may discard one byte
+    lsr     #1,d0
+    move    d0,$a4+$dff000   * words
+    move    d0,$d4+$dff000   * words
+    move    d0,$b4+$dff000   * words
+    move    d0,$c4+$dff000   * words
     rts
 
-* a0 = custom
-* a1 = is_data
-* a6 = execbase
-residLevel4Handler1
-    move.w  #INTF_AUD0,intreq(a0)
- ifeq ENABLE_LEV4PLAY
-    * a1 = task
-    move.l  #SIGBREAKF_CTRL_D,d0
-    jmp     _LVOSignal(a6)
- else
-    * a1 = residLevel1Intr
-    basereg residLevel1Intr,a1
-    
-    * Check if lev1 is done with the previous frame
-    tst.b   framePending(a1)
-    beq.b   .1
- ifne DEBUG
-    move    #$f00,$dff180
- endif
-    rts
-.1
-    * Start processing a new frame
-    st      framePending(a1)
-    jmp     _LVOCause(a6)
-    endb    a1
- endif
 
 
 dmawait
@@ -8510,10 +8628,15 @@ clockEnd          ds.b    EV_SIZE
 cyclesPerFrame    dc.l    0
 clockRoutine      dc.l    0
 bufferMemoryPtr   dc.l    0
-buffer1p          dc.l    0 * buffer 1 pointer: 14-bit hi byte
-                  dc.l    0 * buffer 1 pointer: 14-bit lo byte
-buffer2p          dc.l    0 * buffer 2 pointer: 14-bit hi byte
-                  dc.l    0 * buffer 2 pointer: 14-bit lo byte
+sidBufferAHi      dc.l    0
+sidBufferALo      dc.l    0
+sidBufferBHi      dc.l    0
+sidBufferBLo      dc.l    0
+sid2BufferAHi     dc.l    0
+sid2BufferALo     dc.l    0
+sid2BufferBHi     dc.l    0
+sid2BufferBLo     dc.l    0
+
 mainTask          dc.l    0
 residWorkerTask:  dc.l    0
 oldVecAud0        dc.l    0
