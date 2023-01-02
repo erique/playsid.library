@@ -4077,37 +4077,110 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	dc.w	.D437-.JMP
 	dc.w	.D438-.JMP		;98
 
+    ; ---------------------------------
+
 .D420:
-.D421:
-.D422:
-.D423:
-.D424:
-.D425:
-.D426:
-.D427:
-.D428:
-.D429:
-.D42A:
-.D42B:
-.D42C:
-.D42D:
-.D42E:
-.D42F:
-.D430:
-.D431:
-.D432:
-.D433:
-.D434:
-.D435:
-.D436:
-.D437:
-.D438:
-    move    $dff006,$dff180
-    move    $dff006,$dff180
-    move    $dff006,$dff180
-    move    $dff006,$dff180
-    move    $dff006,$dff180
+	move.w	#$D400,d7
+    bsr     writeSID2Register
     Next_Inst
+.D421:
+	move.w	#$D401,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D422:
+	move.w	#$D402,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D423:
+	move.w	#$D403,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D424:
+	move.w	#$D404,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D425:
+	move.w	#$D405,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D426:
+	move.w	#$D406,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D427:
+	move.w	#$D407,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D428:
+	move.w	#$D408,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D429:
+	move.w	#$D409,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D42A:
+	move.w	#$D40A,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D42B:
+	move.w	#$D40B,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D42C:
+	move.w	#$D40C,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D42D:
+	move.w	#$D40D,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D42E:
+	move.w	#$D40E,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D42F:
+	move.w	#$D40F,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D430:
+	move.w	#$D410,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D431:
+	move.w	#$D411,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D432:
+	move.w	#$D412,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D433:
+	move.w	#$D413,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D434:
+	move.w	#$D414,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D435:
+	move.w	#$D15,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D436:
+	move.w	#$D416,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D437:
+	move.w	#$D417,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D438:
+	move.w	#$D418,d7
+    bsr     writeSID2Register
+    Next_Inst
+
+    ; ---------------------------------
 
 .D400						;80
 	move.w	#$D400,d7
@@ -4435,6 +4508,35 @@ writeSIDRegister:
     move.b  d6,d0
     move.b  d7,d1
     move.l  psb_reSID(a2),a0
+    jsr     sid_write
+    moveq   #1,d0
+    movem.l (sp)+,d0-a6
+    rts
+
+
+* in:
+*    d6 = data
+*    d7 = Register offset 
+* out:
+*    Z set: normal playsid operation
+*    Z clear: was written to reSID/SIDBlaster
+writeSID2Register:
+	move.l	_PlaySidBase,a2
+    tst.w   psb_OperatingMode(a2)
+    bne.b   .out
+    * Normal playsid mode
+.x
+    rts
+.out
+    cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a2)
+    beq.b   .x
+
+    * OM_RESID_6581, OM_RESID_8580
+
+    movem.l d0-a6,-(sp)
+    move.b  d6,d0
+    move.b  d7,d1
+    move.l  psb_reSID2(a2),a0
     jsr     sid_write
     moveq   #1,d0
     movem.l (sp)+,d0-a6
@@ -8227,22 +8329,9 @@ residLevel1Handler:
     rts
 
 * in:
-*   a1 = buffer1p address
+*   a1 = sidBufferAHi address
 switchAndFillBuffer:
-    * Switch buffers
 
-;    basereg buffer1p,a0
-
-;    move.l  buffer1p+0(a0),d0
-;    move.l  buffer1p+4(a0),d1
-;    move.l  buffer2p+0(a0),a1
-;    move.l  buffer2p+4(a0),a2
-;
-;    move.l  d0,buffer2p+0(a0)
-;    move.l  d1,buffer2p+4(a0)
-;    move.l  a1,buffer1p+0(a0)
-;    move.l  a2,buffer1p+4(a0)
-; EREM
 	move.l	_PlaySidBase,a0
     tst.w   psb_Sid2Address(a0)
     bne.b   .sid2
@@ -8277,6 +8366,7 @@ switchAndFillBuffer:
     rts
 
 .sid2
+
     basereg sidBufferAHi,a0
     move.l  a1,a0
     * Swap SID buffers A and B
@@ -8299,6 +8389,7 @@ switchAndFillBuffer:
 
     * output buffer pointers a1 and a2 set above
     move.l  cyclesPerFrame(pc),d0
+    movem.l sidBufferAHi(pc),a1/a2
     * buffer size limit
     move.l  #SAMPLE_BUFFER_SIZE,d1
     move.l  clockRoutine(pc),a3
@@ -8307,7 +8398,7 @@ switchAndFillBuffer:
 
     ; SID 2
 
-    movem.l sid2BufferAHi(pc),a1/a2
+    movem.l sid2BufferBHi(pc),a1/a2
     move.l  cyclesPerFrame(pc),d0
     * buffer size limit
     move.l  #SAMPLE_BUFFER_SIZE,d1

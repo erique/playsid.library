@@ -21,11 +21,11 @@ PSIDLIB_NAME	MACRO
 		ENDM
 
 PSIDLIB_IDSTRING MACRO
-		dc.b	"playsid.library 1.3 reSID+SIDBlaster (2022-11)",13,10,0
+		dc.b	"playsid.library 1.3 reSID+SIDBlaster (2023-01)",13,10,0
 		ENDM
 
 PSIDLIB_COPYRIGHT MACRO
-		dc.b	"? 1994 by Per H?kan Sundell & Ron Birk",0
+		dc.b	"© 1996 by Per Håkan Sundell & Ron Birk",0
 		ENDM
 
 
@@ -180,6 +180,8 @@ FREE		MACRO
     UWORD   psb_OperatingMode
     UWORD   psb_ResidMode
     APTR    psb_DOSBase
+    APTR    psb_reSID2
+    UWORD   psb_Sid2Address
 	LABEL	psb_SIZEOF
 
 ; --- Error --------------------------------------------------------------
