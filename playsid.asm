@@ -7860,8 +7860,9 @@ residData2     ds.b    resid_SIZEOF
 * In:
 *   d0 = 0 for 6581, 1 for 8580
 @SetResidChipModel
+    move.b  d0,d1
     moveq   #CHIP_MODEL_MOS6581,d0
-    tst.b   d0
+    tst.b   d1
     beq     .1
     moveq   #CHIP_MODEL_MOS8580,d0
 .1  
@@ -7906,7 +7907,7 @@ residData2     ds.b    resid_SIZEOF
 *   d0 = buffer length in bytes
 *   d1 = period value used
 *   a0 = audio buffer pointer sid
-*   a1 = audio buffer pointer sid2
+*   a1 = same as a0 or audio buffer pointer for sid 2
 @GetResidAudioBuffer
     move.l  sidBufferAHi,a0
     move.l  a0,a1
@@ -8036,9 +8037,10 @@ allocResidMemory:
     cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
     bne.b   .y
 .z
-    * Allocate 2x four audio buffers
+    * Allocate audio buffers
     * Two per 14-bit channel
     * Times two for double buffering
+    * Times two for two SIDs
     move.l  #(SAMPLE_BUFFER_SIZE)*8,d0
     move.l  #MEMF_CHIP!MEMF_CLEAR,d1
     move.l  4.w,a6
