@@ -26,9 +26,9 @@ to a number, eg. 'setenv PlaySIDMode 1', where the numbers are:
 Applications using "playsid.library" will automatically be enhanced.
 These are at least: HippoPlayer, DeliTracker, Magic64, Frodo. 
 
-HippoPlayer also provides additional integration in the user interface: 
-output mode selection, sampling mode, volume setting, scope display. 
-With Hippo the environment variable setting is not used.
+HippoPlayer also provides additional integration in the user interface: output
+mode selection, sampling mode, filter and volume setting, scope display. With
+Hippo the environment variable setting is not used.
 
 If you're running kickstart 1.3 or 68000 you should use the original 
 library version.
@@ -62,6 +62,10 @@ If the tune being played and/or the chosen sampling mode is too
 heavy, data will be skipped to avoid slowing down the system too much.
 This will cause the sound to be distorted.
 
+The filters can be enabled or disabled. The main filter is responsible
+for the distinctive SID sound. The external filter does not have
+much of an audible effect, it may reduce the sampling noise somewhat.
+
 The sound is output using the Paula 14-bit mode.
 
 reSID v0.16 Amiga port and integration by K-P
@@ -91,3 +95,7 @@ Changelog
            reSID speed optimizations, some fixes
 - 2022-11-19: Fix bug where playback would get stuck for a while, 
               example tune: JCH/Hawaii
+- 2023-01: Added support for 2SIDs, stereo SIDs with 6 audio
+           channels. This works only in reSID mode, and takes about
+           double the amount of CPU compared to ordinary SIDs.
+           Some reSID speed optimizations as well.
