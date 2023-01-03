@@ -4001,7 +4001,6 @@ ReadIO					;Read 64 I/O $D000-$DFFF
 .D436
 .D437
 .D438
-    move    #$0f0,$dff180
     clr.b   d6
 	jmp	    (a2)
 
@@ -8326,12 +8325,12 @@ residLevel4Handler1
 residLevel1Handler:
    	movem.l d2-d7/a2-a4/a6,-(sp)
  ifne DEBUG
-   ; move    #$ff0,$dff180
+    move    #$ff0,$dff180
  endif
     bsr.b   switchAndFillBuffer
     clr.w   framePending
  ifne DEBUG
-   ; clr     $dff180
+    clr     $dff180
  endif
    	movem.l (sp)+,d2-d7/a2-a4/a6
     rts
