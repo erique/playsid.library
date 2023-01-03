@@ -1,7 +1,7 @@
 INCLUDE ?= -I $(VBCC)/m68k-amigaos/ndk-include/
 VBCC ?= /opt/amiga
 VASM ?= $(VBCC)/bin/vasmm68k_mot
-VASM_FLAGS := -Fhunk -kick1hunks -quiet -m68060 -nosym -showcrit -no-opt -I $(VBCC)/m68k-amigaos/ndk-include/
+VASM_FLAGS := -Fhunk -kick1hunks -quiet -m68060 -nosym -showcrit -I $(VBCC)/m68k-amigaos/ndk-include/
 
 GCC ?= $(VBCC)/bin/m68k-amigaos-gcc
 STRIP ?= $(VBCC)/bin/m68k-amigaos-strip

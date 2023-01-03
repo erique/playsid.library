@@ -67,6 +67,12 @@ DPRINT  macro
         endc
         endm
 
+  ifd __VASM
+    ; Turn off optimizations for main playsid code
+    opt o-
+  endif
+
+
 *=======================================================================*
 *	INCLUDES							*
 *=======================================================================*
