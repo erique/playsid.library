@@ -8079,7 +8079,7 @@ freeResidMemory:
     beq.b   .y
     move.l  (a2),a1
     clr.l   (a2)
-    move.l  #(SAMPLE_BUFFER_SIZE)*4,d0
+    move.l  #(SAMPLE_BUFFER_SIZE)*8,d0
     move.l  4.w,a6
     jsr     _LVOFreeMem(a6)
 .y  pop     a6
