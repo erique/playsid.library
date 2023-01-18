@@ -46,13 +46,9 @@ SAMPLES_PER_FRAME = 141876
 
 * Output buffer size 
 * 100 Hz
-*SAMPLE_BUFFER_SIZE = 277+1  * 277.101171875
+* SAMPLE_BUFFER_SIZE = 277+1  * 277.101171875
 * 200 Hz
 SAMPLE_BUFFER_SIZE = 140     * 138.550585
-
-* Set to 1 to disable the reSID extfilter. This saves some CPU
-* and does not have an effect with the sampling modes available.
-;DISABLE_RESID_EXTFILTER = 1
 
 * Enable debug logging into a console window
 * Enable debug colors
@@ -4509,6 +4505,7 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	Next_Inst
 
 
+* Write to SID
 * in:
 *    d6 = data
 *    d7 = address
@@ -4549,12 +4546,13 @@ writeSIDRegister:
     rts
 
 
+* Write to SID 2
 * in:
 *    d6 = data
 *    d7 = Register offset 
 * out:
 *    Z set: normal playsid operation
-*    Z clear: was written to reSID/SIDBlaster
+*    Z clear: was written to reSID
 writeSID2Register:
 	move.l	_PlaySidBase,a2
     tst.w   psb_OperatingMode(a2)
@@ -8017,7 +8015,7 @@ initResid
     jsr     sid_set_sampling_parameters_paula
 
 
-    * Calculate how many cycles are needed per a 1/100s 
+    * Calculate how many cycles are needed per a 1/200s
     * frame as accurately as possible.
     * SAMPLES_PER_FRAME is 22.10 FP 
     * sid_cycles_per_sample is 16.16 FP
@@ -8258,7 +8256,6 @@ residWorkerEntryPoint
     moveq   #SIGF_SINGLE,d0
     jsr     _LVOSignal(a6)
 
-    move.l  4.w,a6
 .loop
     move.l  #SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D,d0
     jsr     _LVOWait(a6)
@@ -8285,8 +8282,6 @@ residWorkerEntryPoint
     move.l  4.w,a6
     jsr     _LVOSetIntVector(a6)
     move.l  d0,oldVecAud0
-
-.error
 
     jsr     _LVOForbid(a6)
     clr.l   residWorkerTask
@@ -8429,7 +8424,6 @@ switchAndFillBuffer:
     movem.l a1/a2,sidBufferAHi(a0)
 
     * Swap SID2 buffers A and B
-    ;movem.l sid2BufferAHi(a0),d0/d1/a3/a4
     movem.l a3/a4,sid2BufferBHi(a0)
     movem.l a5/a6,sid2BufferAHi(a0)
     endb    a0
@@ -8441,9 +8435,8 @@ switchAndFillBuffer:
  
     ; SID 1
 
-    * output buffer pointers a1 and a2 set above
-    move.l  cyclesPerFrame(pc),d0
     movem.l sidBufferAHi(pc),a1/a2
+    move.l  cyclesPerFrame(pc),d0
     * buffer size limit
     move.l  #SAMPLE_BUFFER_SIZE,d1
     move.l  clockRoutine(pc),a3
