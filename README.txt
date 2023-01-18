@@ -33,6 +33,8 @@ Hippo the environment variable setting is not used.
 If you're running kickstart 1.3 or 68000 you should use the original 
 library version.
 
+'setenv PlaySIDDebug 1' will enable reSID raster bar CPU measurement visual.
+
 
 reSID
 -----
@@ -83,7 +85,7 @@ the Poseidon USB stack needs to be installed.
 Samples will not be heard. The playsid.library sample handling 
 is not usable with SIDBlaster.
 
-SIDBlaster support should not require a powerful CPU.
+A 68020 should be enough for SIDBlaster.
 
 SIDBlaster driver and integration by Erique
 

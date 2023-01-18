@@ -319,6 +319,7 @@ AutoInitFunction
         move.l  d0,psb_DOSBase(a5)
         move.l  a5,a6
         bsr     SetDefaultOperatingMode
+        bsr     GetEnvDebugFlag
 
         cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
         bne.b   .noBlaster
@@ -382,13 +383,13 @@ SetDefaultOperatingMode:
         * Default mode
 
         move    #OM_NORMAL,psb_OperatingMode(a5)
+        lea     -20(sp),sp
     
         * Read env variable if possible
         move.l  psb_DOSBase(a5),a6
         cmp     #36,LIB_VERSION(a6)
-        blo.b   .continue
+        blo     .continue
 
-        lea     -20(sp),sp
         move.l  #.envVarName,d1     * variable name
         move.l  sp,d2               * output buffer
         moveq   #20,d3              * space available
@@ -418,12 +419,41 @@ SetDefaultOperatingMode:
 .got3
         move    #OM_SIDBLASTER_USB,psb_OperatingMode(a5)
 .continue
+
         lea     20(sp),sp
         move.l  a5,a6
         rts
 
 .envVarName:
     dc.b    "PlaySIDMode",0
+
+
+GetEnvDebugFlag:
+        lea     -20(sp),sp
+        move.l  a6,a5
+        move.l  psb_DOSBase(a5),a6
+        cmp     #36,LIB_VERSION(a6)
+        blo     .continue
+
+        move.l  #.envVarNameDebug,d1 * variable name
+        move.l  sp,d2               * output buffer
+        moveq   #20,d3              * space available
+        move.l  #GVF_GLOBAL_ONLY,d4 * global variable
+        jsr     _LVOGetVar(a6)      * get it
+        tst.l   d0
+        bmi.b   .continue
+        move.l  sp,a0
+        move    #0,psb_Debug(a5)
+        cmp.b   #"0",(a0)
+        beq.b   .continue
+        move    #1,psb_Debug(a5)
+.continue
+        lea     20(sp),sp
+        move.l  a5,a6
+        rts
+
+.envVarNameDebug:
+    dc.b    "PlaySIDDebug",0
     even
 
 *-----------------------------------------------------------------------*
@@ -8173,6 +8203,17 @@ residWorkerEntryPoint
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
     move.w  #DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
 
+ if DEBUG
+    move.l  #residLevel1HandlerDebug,residLevel1HandlerPtr
+ else
+    move.l  #residLevel1Handler,residLevel1HandlerPtr
+ 	move.l	_PlaySidBase,a0
+    tst.w   psb_Debug(a0)
+    beq     .1
+    move.l  #residLevel1HandlerDebug,residLevel1HandlerPtr
+.1
+ endif
+
     lea     residLevel4Intr1,a1
     moveq   #INTB_AUD0,d0		; Allocate Level 4
     jsr     _LVOSetIntVector(a6)
@@ -8319,19 +8360,25 @@ residLevel4Handler1
  endif
 
 
+* Level 1 interrupt handler, debug colors
+* In:
+*    a1 = IS_Data = sidBufferAHi address
+residLevel1HandlerDebug:
+   	movem.l d2-d7/a2-a4/a6,-(sp)
+    move    #$ff0,$dff180
+    bsr.b   switchAndFillBuffer
+    clr.w   framePending
+    clr     $dff180
+   	movem.l (sp)+,d2-d7/a2-a4/a6
+    rts
+
 * Level 1 interrupt handler
 * In:
 *    a1 = IS_Data = sidBufferAHi address
 residLevel1Handler:
    	movem.l d2-d7/a2-a4/a6,-(sp)
- ifne DEBUG
-    move    #$ff0,$dff180
- endif
     bsr.b   switchAndFillBuffer
     clr.w   framePending
- ifne DEBUG
-    clr     $dff180
- endif
    	movem.l (sp)+,d2-d7/a2-a4/a6
     rts
 
@@ -8769,6 +8816,7 @@ residLevel1Intr
         dc.l    residLevel4Name1    
 residLevel1Data:
         dc.l	0
+residLevel1HandlerPtr:
         dc.l	residLevel1Handler
 
 
