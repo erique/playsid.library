@@ -182,6 +182,7 @@ FREE		MACRO
     APTR    psb_DOSBase
     APTR    psb_reSID2
     UWORD   psb_Sid2Address
+    ULONG   psb_SamplesPerFrame
     UWORD   psb_Debug
 	LABEL	psb_SIZEOF
 

@@ -29,26 +29,45 @@ REGDUMP_SIZE    = 100000
 ENABLE_LEV4PLAY = 1
   endif
 
+; Freq in Hz =  709379.1 / (28419/2) = 49.9228
+; samples per frame = 27710.1171875 /(709379.1 / (28419/2) )
+; samples per frame = (27710.1171875 * (28419/2)) / 709379.1 
+; samples per frame = (27710.1171875*10000 * (28419/2)) / 709379.1 
+
 * Period should be divisible by 64 for bug free 14-bit output
 PAULA_PERIOD=128    
 PAL_CLOCK=3546895
 * Sampling frequency: PAL_CLOCK/PAULA_PERIOD=27710.1171875
 
+* "double speed"
 * reSID update frequency 100 Hz:
 * Samples per 1/100s = 277.10117
 * Samples per 1/100s as 22.10 FP = 283751.59808
-* SAMPLES_PER_FRAME = 283752
+SAMPLES_PER_FRAME_100Hz = 283752
 
+* "4-speed"
 * reSID update frequency 200 Hz:
 * Samples per 1/200s = 138.550585
 * Samples per 1/200s as 22.10 FP = 141875.79904
-SAMPLES_PER_FRAME = 141876
+SAMPLES_PER_FRAME_200Hz = 141876
 
-* Output buffer size 
+* "8-speed"
+* reSID update frequency 400 Hz:
+* Samples per 1/400s = 69.275292
+* Samples per 1/400s as 22.10 FP = 70937.9
+SAMPLES_PER_FRAME_400Hz = 70938
+
+* "12-speed"
+* reSID update frequency 600 Hz:
+* Samples per 1/600s = 46.18352864
+* Samples per 1/600s as 22.10 FP = 47291.93333
+SAMPLES_PER_FRAME_600Hz = 47292
+
+* Output buffer size, this needs to be big enough, exact size not important
 * 100 Hz
 * SAMPLE_BUFFER_SIZE = 277+1  * 277.101171875
-* 200 Hz
-SAMPLE_BUFFER_SIZE = 140     * 138.550585
+* 200 Hz SAMPLE_BUFFER_SIZE = 140     * 138.550585
+SAMPLE_BUFFER_SIZE = 280
 
 * Enable debug logging into a console window
 * Enable debug colors
@@ -316,6 +335,7 @@ AutoInitFunction
         move.l  a5,a6
         bsr     SetDefaultOperatingMode
         bsr     GetEnvDebugFlag
+        bsr     GetEnvRate
 
         cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
         bne.b   .noBlaster
@@ -450,6 +470,55 @@ GetEnvDebugFlag:
 
 .envVarNameDebug:
     dc.b    "PlaySIDDebug",0
+    even
+
+
+GetEnvRate:
+        * Default
+        move.l  #SAMPLES_PER_FRAME_200Hz,psb_SamplesPerFrame(a6)
+
+        lea     -20(sp),sp
+        move.l  a6,a5
+        move.l  psb_DOSBase(a5),a6
+        cmp     #36,LIB_VERSION(a6)
+        blo     .continue
+
+        move.l  #.envVarName,d1     * variable name
+        move.l  sp,d2               * output buffer
+        moveq   #20,d3              * space available
+        move.l  #GVF_GLOBAL_ONLY,d4 * global variable
+        jsr     _LVOGetVar(a6)      * get it
+        tst.l   d0
+        bmi.b   .continue
+        move.l  sp,a0
+        cmp.b   #"1",(a0)
+        beq.b   .s1
+        cmp.b   #"2",(a0)
+        beq.b   .s2
+        cmp.b   #"4",(a0)
+        beq.b   .s4
+        cmp.b   #"6",(a0)
+        beq.b   .s6
+        bra     .continue
+.s1
+        move.l  #SAMPLES_PER_FRAME_100Hz,psb_SamplesPerFrame(a5)
+        bra     .continue
+.s2
+        move.l  #SAMPLES_PER_FRAME_200Hz,psb_SamplesPerFrame(a5)
+        bra     .continue
+.s4
+        move.l  #SAMPLES_PER_FRAME_400Hz,psb_SamplesPerFrame(a5)
+        bra     .continue
+.s6
+        move.l  #SAMPLES_PER_FRAME_600Hz,psb_SamplesPerFrame(a5)
+
+.continue
+        lea     20(sp),sp
+        move.l  a5,a6
+        rts
+
+.envVarName:
+    dc.b    "PlaySIDRate",0
     even
 
 *-----------------------------------------------------------------------*
@@ -7948,7 +8017,9 @@ residData2     ds.b    resid_SIZEOF
     beq     .1
     move.l  sid2BufferAHi,a1
 .1
-    move.l  #SAMPLE_BUFFER_SIZE,d0
+    move.l  psb_SamplesPerFrame(a6),d0
+    lsr.l   #8,d0
+    lsr.l   #2,d0
     move.l  #PAULA_PERIOD,d1
     rts
 
@@ -8019,7 +8090,7 @@ initResid
     * frame as accurately as possible.
     * SAMPLES_PER_FRAME is 22.10 FP 
     * sid_cycles_per_sample is 16.16 FP
-    move.l  #SAMPLES_PER_FRAME,d0
+    move.l  psb_SamplesPerFrame(a6),d0
     mulu.l  sid_cycles_per_sample(a0),d1:d0
     * Shift by 16 and 10 to get the FP to 
     * the correct position
@@ -8569,7 +8640,7 @@ dmawait
     DPRINT  "samplingMode=%ld clockRoutine=%lx"
  endif
 
-    move.l  #SAMPLES_PER_FRAME,d0
+    move.l  #SAMPLES_PER_FRAME_200Hz,d0
     lea     residData,a0
     mulu.l  sid_cycles_per_sample(a0),d1:d0
     * Shift by 16 and 10 to get the FP to 

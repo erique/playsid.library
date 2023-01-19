@@ -33,8 +33,6 @@ Hippo the environment variable setting is not used.
 If you're running kickstart 1.3 or 68000 you should use the original 
 library version.
 
-'setenv PlaySIDDebug 1' will enable reSID raster bar CPU measurement visual.
-
 
 reSID
 -----
@@ -73,6 +71,27 @@ The sound is output using the Paula 14-bit mode.
 reSID v0.16 Amiga port and integration by K-P
 
 
+reSID related environment variables
+-----------------------------------
+'setenv PlaySIDDebug 1' will enable reSID raster bar CPU measurement visual, 0
+will disable it.
+
+'setenv PlaySIDRate <num>' will configure the reSID update rate. These
+correspond to the "tune speeds": a SID tune has been composed using a certain
+rate which it updates the SID registers. Faster rates allow for more complex
+sounds.
+
+Higher speed tunes need to be played with the same rate or higher to sound
+correct. Most SID tunes are "single speed". There's also a 12-speed tune by
+Jeff, called "12-speed_tune.sid". Using a higher rate will use more CPU than a
+lower rate due to the increased amount of interrupts and other overhead.
+
+1 = 100 Hz "double speed"
+2 = 200 Hz "4-speed", this is the default setting
+4 = 400 Hz "8-speed"
+6 = 600 Hz "12-speed"
+
+
 SIDBlaster
 ----------
 
@@ -84,8 +103,6 @@ the Poseidon USB stack needs to be installed.
 
 Samples will not be heard. The playsid.library sample handling 
 is not usable with SIDBlaster.
-
-A 68020 should be enough for SIDBlaster.
 
 SIDBlaster driver and integration by Erique
 
@@ -101,3 +118,4 @@ Changelog
            channels. This works only in reSID mode, and takes about
            double the amount of CPU compared to ordinary SIDs.
            Some reSID speed optimizations as well.
+           Configurable update rate.
