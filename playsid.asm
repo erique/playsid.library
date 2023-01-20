@@ -29,15 +29,13 @@ REGDUMP_SIZE    = 100000
 ENABLE_LEV4PLAY = 1
   endif
 
-; Freq in Hz =  709379.1 / (28419/2) = 49.9228
-; samples per frame = 27710.1171875 /(709379.1 / (28419/2) )
-; samples per frame = (27710.1171875 * (28419/2)) / 709379.1 
-; samples per frame = (27710.1171875*10000 * (28419/2)) / 709379.1 
 
 * Period should be divisible by 64 for bug free 14-bit output
 PAULA_PERIOD=128    
 PAL_CLOCK=3546895
 * Sampling frequency: PAL_CLOCK/PAULA_PERIOD=27710.1171875
+
+SAMPLES_PER_FRAME_50Hz = 283752*2
 
 * "double speed"
 * reSID update frequency 100 Hz:
@@ -67,11 +65,12 @@ SAMPLES_PER_FRAME_600Hz = 47292
 * 100 Hz
 * SAMPLE_BUFFER_SIZE = 277+1  * 277.101171875
 * 200 Hz SAMPLE_BUFFER_SIZE = 140     * 138.550585
-SAMPLE_BUFFER_SIZE = 280
+SAMPLE_BUFFER_SIZE = 600
 
 * Enable debug logging into a console window
 * Enable debug colors
 DEBUG = 0
+SERIALDEBUG = 0
 
 * Macro to print to debug console
 DPRINT  macro
@@ -335,7 +334,6 @@ AutoInitFunction
         move.l  a5,a6
         bsr     SetDefaultOperatingMode
         bsr     GetEnvDebugFlag
-        bsr     GetEnvRate
 
         cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
         bne.b   .noBlaster
@@ -470,55 +468,6 @@ GetEnvDebugFlag:
 
 .envVarNameDebug:
     dc.b    "PlaySIDDebug",0
-    even
-
-
-GetEnvRate:
-        * Default
-        move.l  #SAMPLES_PER_FRAME_200Hz,psb_SamplesPerFrame(a6)
-
-        lea     -20(sp),sp
-        move.l  a6,a5
-        move.l  psb_DOSBase(a5),a6
-        cmp     #36,LIB_VERSION(a6)
-        blo     .continue
-
-        move.l  #.envVarName,d1     * variable name
-        move.l  sp,d2               * output buffer
-        moveq   #20,d3              * space available
-        move.l  #GVF_GLOBAL_ONLY,d4 * global variable
-        jsr     _LVOGetVar(a6)      * get it
-        tst.l   d0
-        bmi.b   .continue
-        move.l  sp,a0
-        cmp.b   #"1",(a0)
-        beq.b   .s1
-        cmp.b   #"2",(a0)
-        beq.b   .s2
-        cmp.b   #"4",(a0)
-        beq.b   .s4
-        cmp.b   #"6",(a0)
-        beq.b   .s6
-        bra     .continue
-.s1
-        move.l  #SAMPLES_PER_FRAME_100Hz,psb_SamplesPerFrame(a5)
-        bra     .continue
-.s2
-        move.l  #SAMPLES_PER_FRAME_200Hz,psb_SamplesPerFrame(a5)
-        bra     .continue
-.s4
-        move.l  #SAMPLES_PER_FRAME_400Hz,psb_SamplesPerFrame(a5)
-        bra     .continue
-.s6
-        move.l  #SAMPLES_PER_FRAME_600Hz,psb_SamplesPerFrame(a5)
-
-.continue
-        lea     20(sp),sp
-        move.l  a5,a6
-        rts
-
-.envVarName:
-    dc.b    "PlaySIDRate",0
     even
 
 *-----------------------------------------------------------------------*
@@ -785,6 +734,12 @@ sid2Enabled:
 @StopSong	;CALLEXEC Forbid
         DPRINT  "StopSong"
 		movem.l	d2-d7/a2-a6,-(a7)
+    moveq   #0,d0
+    move.l  cyclesPerFrame,d0
+        moveq   #0,d0
+        move.w  psb_TimerConstB(a6),d0
+        DPRINT  "TimerConstB=%ld"
+
 		cmp.w	#PM_STOP,psb_PlayMode(a6)
 		beq.s	.Exit
 		cmp.w	#PM_PAUSE,psb_PlayMode(a6)
@@ -959,7 +914,7 @@ Init64
 *-----------------------------------------------------------------------*
 Play64:
         bsr	EmulNextStep
-        
+
         tst.w   psb_OperatingMode(a6)
         bne.b   .1
 		bsr	    DoSound
@@ -1138,8 +1093,10 @@ CheckC64TimerA
 		mulu	psb_ConvClockConst(a6),d0
 		swap	d0
 		move.w	d0,psb_TimerConstB(a6)
+        and.l   #$ffff,d0
 		bsr	SetTimerB			;Timer B!
-		bsr	CalcUpdateFreq
+		bsr	CalcUpdateFreq       
+        jsr calcSamplesAndCyclesPerFrameFromCIATicks
 .1
 		rts
 
@@ -1225,6 +1182,7 @@ ReadDisplayData
 
 *-----------------------------------------------------------------------*
 InitSpeed
+    DPRINT  "InitSpeed"
 		movem.l	d2-d3,-(a7)
 		tst.w	psb_SongSpeed(a6)
 		beq.s	.1
@@ -1262,6 +1220,9 @@ InitSpeed
 		move.w	d1,psb_TimerConstA(a6)		;Envelope Timer
 		move.w	d2,psb_ConvClockConst(a6)	;Convert Clock C64 to Amiga
 		move.w	d3,psb_ConvFourConst(a6)	;Convert C64 Four Sample speed to Amiga period
+
+        jsr calcSamplesAndCyclesPerFrameFromCIATicks
+
 		movem.l	(a7)+,d2-d3
 		rts
 
@@ -4722,6 +4683,7 @@ OpenIRQ
 		tst.w	psb_IntVecAudFlag(a6)
 		bne.s	.1
 
+        * Skip lev4 unless normal mode
         tst.w   psb_OperatingMode(a6)
         bne     .1
 
@@ -4752,8 +4714,8 @@ OpenIRQ
 	    
         ; Got level4 stuff!
         move.w	#1,psb_IntVecAudFlag(a6)
-
-.1		lea	CiabName,a1	; Open Cia Resource
+.1		
+        lea	CiabName,a1	; Open Cia Resource
 		moveq	#0,d0
 		move.l	a6,-(a7)
 		CALLEXEC	OpenResource
@@ -4763,6 +4725,8 @@ OpenIRQ
 
 		tst.w	psb_TimerAFlag(a6)
 		bne.s	.2
+
+        * Skip this timer (envelopes) if not in normal mode
         tst.w   psb_OperatingMode(a6)
         bne     .2
 
@@ -4777,6 +4741,13 @@ OpenIRQ
 
 .2		tst.w	psb_TimerBFlag(a6)
 		bne.s	.3
+
+        * Skip this timer (playback) if reSID
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .3
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        beq.b   .3
+
 		lea	timerBIntr,a1
 		moveq	#CIAICRB_TB,d0
 		move.l	a6,-(a7)
@@ -4785,7 +4756,6 @@ OpenIRQ
 		tst.l	d0
 		bne.s	.error
 		move.w	#1,psb_TimerBFlag(a6)
-
 .3		
         cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
         beq.b   .reSID
@@ -4959,7 +4929,8 @@ PlayDisable					;Turns off all Audio
 timerAServer	equ	Envelopes		; Do Envelopes
 
 *-----------------------------------------------------------------------*
-timerBServer	CALLEXEC 	Cause		; Ready for Player
+timerBServer	
+        CALLEXEC 	Cause		; Ready for Player
 		moveq	#0,d0			; A1=softwIntr
 		rts
 
@@ -8018,8 +7989,7 @@ residData2     ds.b    resid_SIZEOF
     move.l  sid2BufferAHi,a1
 .1
     move.l  psb_SamplesPerFrame(a6),d0
-    lsr.l   #8,d0
-    lsr.l   #2,d0
+    lsr.l   #7,d0
     move.l  #PAULA_PERIOD,d1
     rts
 
@@ -8085,21 +8055,11 @@ initResid
     move.l  psb_reSID2(a6),a0
     jsr     sid_set_sampling_parameters_paula
 
-
-    * Calculate how many cycles are needed per a 1/200s
-    * frame as accurately as possible.
-    * SAMPLES_PER_FRAME is 22.10 FP 
-    * sid_cycles_per_sample is 16.16 FP
-    move.l  psb_SamplesPerFrame(a6),d0
-    mulu.l  sid_cycles_per_sample(a0),d1:d0
-    * Shift by 16 and 10 to get the FP to 
-    * the correct position
-    divu.l  #1<<(16+10),d1:d0
-    move.l  d0,cyclesPerFrame
-
- if DEBUG
-    DPRINT  "Cycles per frame=%ld"
- endif
+    * Initial value for cyclesPerFrame, 50 Hz
+    tst.w   psb_TimerConstB(a6)
+    bne     .2
+    move.w  #28419/2,psb_TimerConstB(a6)
+.2  bsr     calcSamplesAndCyclesPerFrameFromCIATicks
 
     move.l  psb_reSID(a6),a0
     jsr     sid_reset
@@ -8131,6 +8091,79 @@ initResid
 
     movem.l (sp)+,d1-a6
     rts
+
+* Assuming Paula playback period 128, given the amount of CIA
+* timer ticks, calculates how many audio samples and SID cycles
+* the amount of ticks corresponds to.
+* in:
+*   a6 = PlaySidBase
+calcSamplesAndCyclesPerFrameFromCIATicks:
+
+; Freq in Hz =  709379.1 / (28419/2) = 49.9228
+; samples per frame = 27710.1171875 /(709379.1 / (28419/2) )
+; samples per frame = (27710.1171875 * (28419/2)) / 709379.1 
+; r/(c/t) -> r*t/c -> (r/c)*t
+; 27710.1171875 / 709379.1 = 0.03906249449342389704 
+; 0.03906249449342389704*(1<<10) = 39.99999436126607056791
+* 0.03906249449342389704*(1<<7)  = 4.99999929515825882112 = 5!
+; cia ticks * 40 = samples per frame 22.10 FP
+; cia ticks * 5  = samples per frame 25.7 FP
+
+    move.w  psb_TimerConstB(a6),d0   
+    mulu.w  #5,d0
+    * d0 = samples per frame 25.7 FP
+    move.l  d0,psb_SamplesPerFrame(a6)
+
+    ;cycles_per_sample = clock_freq / sample_freq * (1 << FIXP_SHIFT) + 0.5);
+    
+    * Calculate how many cycles are needed per frame
+    * samples per frame is 25.7 FP 
+    * sid_cycles_per_sample is 16.16 FP
+    move.l  psb_reSID(a6),a0
+    move.l  sid_cycles_per_sample(a0),d1
+    bsr     mulu_64
+    * Shift result by 16+7 for correct FP
+    moveq   #16+7,d2
+    lsr.l   d2,d1
+    moveq   #32-16-7,d2
+    lsl.l   d2,d0
+    or.l    d1,d0    
+ REM
+    * 64-bit instructions avoided
+    mulu.l  sid_cycles_per_sample(a0),d1:d0
+    divu.l  #1<<(16+7),d1:d0
+ EREM
+    move.l  d0,cyclesPerFrame
+    rts
+
+
+;umult64 - mulu.l d0,d0:d1
+;by Meynaf/English Amiga Board
+mulu_64
+     move.l d2,-(a7)
+     move.w d0,d2
+     mulu d1,d2
+     move.l d2,-(a7)
+     move.l d1,d2
+     swap d2
+     move.w d2,-(a7)
+     mulu d0,d2
+     swap d0
+     mulu d0,d1
+     mulu (a7)+,d0
+     add.l d2,d1
+     moveq #0,d2
+     addx.w d2,d2
+     swap d2
+     swap d1
+     move.w d1,d2
+     clr.w d1
+     add.l (a7)+,d1
+     addx.l d2,d0
+     move.l (a7)+,d2
+ 	rts
+
+
 
 * Out:
 *    d0 = 0: out of mem, non-1: ok
@@ -8265,7 +8298,7 @@ residWorkerEntryPoint
     * Max softint priority
     move.b  #32,LN_PRI+residLevel1Intr
     * Store this for easy access
-    move.l  #sidBufferAHi,residLevel1Data
+    move.l  _PlaySidBase,residLevel1Data
 
     ; Stop all 
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
@@ -8299,7 +8332,7 @@ residWorkerEntryPoint
     
     bsr     residSetVolume
 
-    lea     sidBufferAHi(pc),a1
+    move.l  _PlaySidBase,a6
     bsr     switchAndFillBuffer
     bsr     dmawait     * probably not needed
     
@@ -8336,7 +8369,6 @@ residWorkerEntryPoint
 
   ifeq ENABLE_LEV4PLAY
     push    a6
-    lea     sidBufferAHi(pc),a1
     bsr     switchAndFillBuffer
     pop     a6
   endif
@@ -8428,36 +8460,37 @@ residLevel4Handler1
 
 * Level 1 interrupt handler, debug colors
 * In:
-*    a1 = IS_Data = sidBufferAHi address
+*    a1 = IS_Data = PlaySidBase
 residLevel1HandlerDebug:
-   	movem.l d2-d7/a2-a4/a6,-(sp)
     move    #$ff0,$dff180
-    bsr.b   switchAndFillBuffer
-    clr.w   framePending
+    bsr.b   residLevel1Handler
     clr     $dff180
-   	movem.l (sp)+,d2-d7/a2-a4/a6
-    rts
+   	rts
 
 * Level 1 interrupt handler
 * In:
-*    a1 = IS_Data = sidBufferAHi address
+*    a1 = IS_Data = PlaySidBase
 residLevel1Handler:
    	movem.l d2-d7/a2-a4/a6,-(sp)
+    move.l  a1,a6
+    cmp.w   #PM_PLAY,psb_PlayMode(a6)
+    bne.b   .x
+    jsr     Play64
+.x
     bsr.b   switchAndFillBuffer
     clr.w   framePending
    	movem.l (sp)+,d2-d7/a2-a4/a6
     rts
 
 * in:
-*   a1 = sidBufferAHi address
+*   a6 = PlaySidBase
 switchAndFillBuffer:
+    lea     sidBufferAHi(pc),a0
 
-	move.l	_PlaySidBase,a0
-    tst.w   psb_Sid2Address(a0)
+    tst.w   psb_Sid2Address(a6)
     bne.b   .sid2
 
     basereg sidBufferAHi,a0
-    move.l  a1,a0
     * Swap SID buffers A and B
     movem.l sidBufferAHi(a0),d0/d1/a1/a2
     movem.l d0/d1,sidBufferBHi(a0)
@@ -8469,7 +8502,7 @@ switchAndFillBuffer:
     move.l  a1,$b0+$dff000 
     move.l  a2,$c0+$dff000 
  
-    lea     residData,a0
+    move.l   psb_reSID(a6),a0
     * output buffer pointers a1 and a2 set above
     move.l  cyclesPerFrame(pc),d0
     * buffer size limit
@@ -8486,9 +8519,7 @@ switchAndFillBuffer:
     rts
 
 .sid2
-
     basereg sidBufferAHi,a0
-    move.l  a1,a0
     * Swap SID buffers A and B
     movem.l sidBufferAHi(a0),d0/d1/a1/a2/a3/a4/a5/a6
     movem.l d0/d1,sidBufferBHi(a0)
@@ -9033,23 +9064,41 @@ desmsgDebugAndPrint
 
 	lea	    _debugDesBuf(pc),a3
 	move.l	sp,a1	
+ ifne SERIALDEBUG
+    lea     .putCharSerial(pc),a2
+ else
 	lea	.putc(pc),a2	
+ endif
 	move.l	4.w,a6
 	jsr	    _LVORawDoFmt(a6)
 	movem.l	(sp)+,d0-d7/a0-a3/a6
-	bsr.w	PRINTOUT_DEBUGBUFFER
+ ifeq SERIALDEBUG
+	bsr	PRINTOUT_DEBUGBUFFER
+ endif
 	rts	* teleport!
 .putc	
 	move.b	d0,(a3)+	
 	rts
 
+.putCharSerial
+    ;_LVORawPutChar
+    ; output char in d0 to serial
+    move.l  4.w,a6
+    jsr     -516(a6)
+    rts
+
 CloseDebug:
     move.l  _DOSBase(pc),a6
+    cmp.w   #0,a6
+    beq     .2
     move.l  _output(pc),d1
+    beq.b   .1
  	jsr     _LVOClose(a6)
+.1
     move.l  a6,a1
     move.l  4.w,a6
     jsr     _LVOCloseLibrary(a6)
+.2
     clr.l   _DOSBase
     clr.l   _output
     rts
