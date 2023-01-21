@@ -742,12 +742,6 @@ sid2Enabled:
 @StopSong	;CALLEXEC Forbid
         DPRINT  "StopSong"
 		movem.l	d2-d7/a2-a6,-(a7)
-    moveq   #0,d0
-    move.l  cyclesPerFrame,d0
-        moveq   #0,d0
-        move.w  psb_TimerConstB(a6),d0
-        DPRINT  "TimerConstB=%ld"
-
 		cmp.w	#PM_STOP,psb_PlayMode(a6)
 		beq.s	.Exit
 		cmp.w	#PM_PAUSE,psb_PlayMode(a6)
