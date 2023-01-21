@@ -1089,11 +1089,10 @@ CheckC64TimerA
 		bsr	GetC64TimerA
 		cmp.w	psb_OldC64TimerA(a6),d0
 		beq	.1
-		move.w	d0,psb_OldC64TimerA(a6)
+      	move.w	d0,psb_OldC64TimerA(a6)
 		mulu	psb_ConvClockConst(a6),d0
 		swap	d0
 		move.w	d0,psb_TimerConstB(a6)
-        and.l   #$ffff,d0
 		bsr	SetTimerB			;Timer B!
 		bsr	CalcUpdateFreq       
         jsr calcSamplesAndCyclesPerFrameFromCIATicks
@@ -8110,6 +8109,10 @@ calcSamplesAndCyclesPerFrameFromCIATicks:
 ; cia ticks * 5  = samples per frame 25.7 FP
 
     move.w  psb_TimerConstB(a6),d0   
+    bne.b   .1
+    * As a safety fallback revert to 50 Hz
+    move    #28419/2,d0
+.1
     mulu.w  #5,d0
     * d0 = samples per frame 25.7 FP
     move.l  d0,psb_SamplesPerFrame(a6)
