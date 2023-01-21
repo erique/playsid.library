@@ -644,6 +644,12 @@ GetEnvDebugFlag:
         add.l   #$d000,d0
         move.w  d0,psb_Sid2Address(a6)
         DPRINT  "2nd SID at %lx"
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .3
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        beq.b   .3
+        rts
+.3
         bsr     MakeMMUTable2
         rts
 
