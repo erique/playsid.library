@@ -8723,7 +8723,7 @@ dmawait
      * D0 will be 709379 for PAL.
 	move.l	d0,d2
 	; d2 = ticks/s
-	divu	#1000,d2
+	divu	#10000,d2
 	; d2 = ticks/10ms
 	ext.l	d2
 	
@@ -8761,7 +8761,7 @@ dmawait
     jsr     _LVOFreeMem(a6)
 .x
     move.l  d7,d0
-    moveq   #20,d1 * reference value
+    move.l  #200,d1 * reference value
     movem.l (sp)+,d2-d7/a2-a6
     rts
 .error
