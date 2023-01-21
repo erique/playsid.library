@@ -35,7 +35,11 @@ PAULA_PERIOD=128
 PAL_CLOCK=3546895
 * Sampling frequency: PAL_CLOCK/PAULA_PERIOD=27710.1171875
 
-SAMPLES_PER_FRAME_50Hz = 283752*2
+* "single speed"
+* reSID update frequency 50 Hz:
+* Samples per 1/50s = 554.20234375
+* Samples per 1/50s as 22.10 FP = 567503.2
+SAMPLES_PER_FRAME_50Hz =  567503
 
 * "double speed"
 * reSID update frequency 100 Hz:
@@ -61,10 +65,8 @@ SAMPLES_PER_FRAME_400Hz = 70938
 * Samples per 1/600s as 22.10 FP = 47291.93333
 SAMPLES_PER_FRAME_600Hz = 47292
 
-* Output buffer size, this needs to be big enough, exact size not important
-* 100 Hz
-* SAMPLE_BUFFER_SIZE = 277+1  * 277.101171875
-* 200 Hz SAMPLE_BUFFER_SIZE = 140     * 138.550585
+* Output buffer size, this needs to be big enough, exact size not important.
+* "single speed" buffer is 554 bytes
 SAMPLE_BUFFER_SIZE = 600
 
 * Enable debug logging into a console window
