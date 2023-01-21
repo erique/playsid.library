@@ -40,23 +40,22 @@ reSID
 reSID provides an accurate, cycle exact emulation of both the 6581 
 and the 8580 SID chips, with filter support. 
 
-The emulated SID chip is updated at 200 Hz. This should allow double 
-speed SID tunes to work acceptably, possibly also quad speed ones.
-A normal SID tune is usually updated at 50 Hz, a double speed 
-tune once at 100 Hz ms, and so forth.
+reSID is very heavy on the CPU. Depending on the tune, it will
+use about half of the available CPU power on an A1200 with a 50MHz 68060.
+An FPU is not required.
 
 Samples will not be heard. This is because the samples have typically 
 had some special handling in SID players and emulators. The 
 playsid.library sample handling is not usable with reSID.
 
-reSID is very heavy on the CPU. I measured CPU usage of 50-80% on 
-an A1200 with a 50MHz 68060, depending on the tune. An FPU is 
-not required.
+Multispeed tunes are supported, as well as stereo SIDs (2SIDs). 
+A 50MHz 68060 can play most of these with filters enabled.
 
 Sometimes the sound output may be noisy. This is sampling noise, 
 result of the reSID "fast sampling" method. A few other sampling
 modes are also available to reduce the noise. These are heavier and 
-may not run on a 50 MHz 68060.
+may not run on a 50 MHz 68060. The "Oversample 2x" should be fine
+with 50 MHz.
 
 If the tune being played and/or the chosen sampling mode is too 
 heavy, data will be skipped to avoid slowing down the system too much.
@@ -68,28 +67,10 @@ much of an audible effect, it may reduce the sampling noise somewhat.
 
 The sound is output using the Paula 14-bit mode.
 
-reSID v0.16 Amiga port and integration by K-P
-
-
-reSID related environment variables
------------------------------------
 'setenv PlaySIDDebug 1' will enable reSID raster bar CPU measurement visual, 0
 will disable it.
 
-'setenv PlaySIDRate <num>' will configure the reSID update rate. These
-correspond to the "tune speeds": a SID tune has been composed using a certain
-rate which it updates the SID registers. Faster rates allow for more complex
-sounds.
-
-Higher speed tunes need to be played with the same rate or higher to sound
-correct. Most SID tunes are "single speed". There's also a 12-speed tune by
-Jeff, called "12-speed_tune.sid". Using a higher rate will use more CPU than a
-lower rate due to the increased amount of interrupts and other overhead.
-
-1 = 100 Hz "double speed"
-2 = 200 Hz "4-speed", this is the default setting
-4 = 400 Hz "8-speed"
-6 = 600 Hz "12-speed"
+reSID v0.16 Amiga port and integration by K-P
 
 
 SIDBlaster
@@ -114,8 +95,10 @@ Changelog
            reSID speed optimizations, some fixes
 - 2022-11-19: Fix bug where playback would get stuck for a while, 
               example tune: JCH/Hawaii
-- 2023-01: Added support for 2SIDs, stereo SIDs with 6 audio
-           channels. This works only in reSID mode, and takes about
-           double the amount of CPU compared to ordinary SIDs.
-           Some reSID speed optimizations as well.
-           Configurable update rate.
+- 2023-01: - Added support for 2SIDs, stereo SIDs with 6 audio
+             channels. This works only in reSID mode, and takes about
+             double the amount of CPU compared to ordinary SIDs.
+            - Full support for multispeed tunes added, earlier only
+              speeds up to four worked properly.
+            - A bunch of reSID speed optimizations.
+           
