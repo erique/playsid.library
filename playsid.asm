@@ -742,6 +742,13 @@ sid2Enabled:
 @StopSong	;CALLEXEC Forbid
         DPRINT  "StopSong"
 		movem.l	d2-d7/a2-a6,-(a7)
+
+ if DEBUG
+        moveq   #0,d0
+        move.w  psb_TimerConstB(a6),d0
+        DPRINT  "psb_TimerConstB=%ld"
+ endif
+
 		cmp.w	#PM_STOP,psb_PlayMode(a6)
 		beq.s	.Exit
 		cmp.w	#PM_PAUSE,psb_PlayMode(a6)
@@ -8095,7 +8102,9 @@ initResid
 
 * Assuming Paula playback period 128, given the amount of CIA
 * timer ticks, calculates how many audio samples and SID cycles
-* the amount of ticks corresponds to.
+* the amount of ticks corresponds to. This defines both the
+* audio interrupt interval and timing for the playback.
+* May be called from interrupt.
 * in:
 *   a6 = PlaySidBase
 calcSamplesAndCyclesPerFrameFromCIATicks:
@@ -8110,9 +8119,11 @@ calcSamplesAndCyclesPerFrameFromCIATicks:
 ; cia ticks * 40 = samples per frame 22.10 FP
 ; cia ticks * 5  = samples per frame 25.7 FP
 
+    * Safety check: check if higher than 600 Hz in case of spurious
+    * or NULL values, and revert to 50 Hz. 1178 = 600 Hz
     move.w  psb_TimerConstB(a6),d0   
-    bne.b   .1
-    * As a safety fallback revert to 50 Hz
+    cmp.w   #1170,d0
+    bhi.b   .1
     move    #28419/2,d0
 .1
     mulu.w  #5,d0
