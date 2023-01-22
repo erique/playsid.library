@@ -83,6 +83,15 @@ DPRINT  macro
         endc
         endm
 
+SPRINT  macro
+        ifne     SERIALDEBUG
+        jsr      desmsgDebugAndPrint
+        dc.b     \1,10,0
+        even
+        endc
+        endm
+
+
   ifd __VASM
     ; Turn off optimizations for main playsid code
     opt o-
@@ -8302,6 +8311,7 @@ stopResidWorkerTask:
 
 * Playback task
 residWorkerEntryPoint
+    SPRINT  "task:starting"
     move.l  4.w,a6
     sub.l   a1,a1
     jsr     _LVOFindTask(a6)
@@ -8316,6 +8326,7 @@ residWorkerEntryPoint
     * Store this for easy access
     move.l  _PlaySidBase,residLevel1Data
 
+    SPRINT  "task:clear intena+intreq+dmacon"
     ; Stop all 
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
@@ -8331,6 +8342,7 @@ residWorkerEntryPoint
     move.l  #residLevel1HandlerDebug,residLevel1HandlerPtr
 .1
  endif
+    SPRINT  "task:SetIntVector"
 
     lea     residLevel4Intr1,a1
     moveq   #INTB_AUD0,d0		; Allocate Level 4
@@ -8351,7 +8363,9 @@ residWorkerEntryPoint
     move.l  _PlaySidBase,a6
     bsr     switchAndFillBuffer
     bsr     dmawait     * probably not needed
-    
+
+    SPRINT  "task:enable audio interrupt"
+
   ifne ENABLE_14BIT
     move    #DMAF_SETCLR!DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
   else
@@ -8376,6 +8390,7 @@ residWorkerEntryPoint
     moveq   #SIGF_SINGLE,d0
     jsr     _LVOSignal(a6)
 
+    SPRINT  "task:wait"
 .loop
     move.l  #SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D,d0
     jsr     _LVOWait(a6)
@@ -8391,23 +8406,29 @@ residWorkerEntryPoint
     bra     .loop
 
 .x
-    move    #$f,dmacon+$dff000
-    bsr     residClearVolume
+    SPRINT  "task:stopping"
+    move.l  4.w,a6
+    jsr     _LVOForbid(a6)
+    jsr     _LVODisable(a6)
+
+    ; First stop audio interrupt, as stopping DMA first would go into
+    ; manual mode and start triggering audio interrupts after every word.
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
     move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
+    move    #$f,dmacon+$dff000
+    bsr     residClearVolume
 
     moveq	#INTB_AUD0,d0
     move.l  oldVecAud0(pc),a1
-    move.l  4.w,a6
     jsr     _LVOSetIntVector(a6)
     move.l  d0,oldVecAud0
 
-    jsr     _LVOForbid(a6)
     clr.l   residWorkerTask
 
     move.l  mainTask(pc),a1
     moveq   #SIGF_SINGLE,d0
     jsr     _LVOSignal(a6)
+    SPRINT  "task:stopped"
     rts
 
 residSetVolume:
@@ -8527,6 +8548,13 @@ switchAndFillBuffer:
     jsr     (a3)
     * d0 = bytes received, make words
     * rounds down, so may discard one byte
+
+    * Low bound check, 600 Hz rate would equal to about 46
+    cmp     #40,d0
+    bhs.b   .low1
+    moveq   #40,d0
+.low1
+
     lsr     #1,d0
     move    d0,$a4+$dff000   * words
     move    d0,$d4+$dff000   * words
@@ -8571,6 +8599,11 @@ switchAndFillBuffer:
     lea     residData2,a0
     jsr     (a3)
 
+    * Low bound check, 600 Hz rate would equal to about 46
+    cmp     #40,d0
+    bhs.b   .low2
+    moveq   #40,d0
+.low2
     * d0 = bytes received, make words
     * rounds down, so may discard one byte
     lsr     #1,d0
