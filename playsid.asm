@@ -74,6 +74,7 @@ SAMPLE_BUFFER_SIZE = 600
 DEBUG = 0
 SERIALDEBUG = 0
 
+
 * Macro to print to debug console
 DPRINT  macro
         ifne     DEBUG
@@ -208,6 +209,7 @@ AutoInitVectors	;***** Standard System Routines *****
         dc.l    @SetResidFilter
         dc.l    @GetResidAudioBuffer
         dc.l    @MeasureResidPerformance
+        dc.l    @GetSongSpeed
 		dc.l	-1
 
 AutoInitStructure
@@ -666,6 +668,21 @@ GetEnvDebugFlag:
 sid2Enabled:
     move.w  psb_Sid2Address(a6),d0
     rts
+
+@GetSongSpeed
+        moveq   #0,d0
+        move.w	psb_TimerConstB(a6),d0
+        bne.b   .1
+        move    #28419/2,d1
+.1      move.l  #(709379+28419/4),d0
+        divu    d1,d0
+        ext.l   d0
+        move    d0,d1
+        divu    #50,d0
+        ext.l   d0
+        divu    #10,d1
+        mulu    #10,d1
+        rts
 
 
 *-----------------------------------------------------------------------*

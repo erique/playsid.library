@@ -49,6 +49,7 @@ LIBRARIES_PLAYSID_LIB_I SET	1
     LIBDEF _LVOSetRESIDFilter
     LIBDEF _LVOGetRESIDAudioBuffer
     LIBDEF _LVOMeasureRESIDPerformance
+    LIBDEF _LVOGetSongSpeed
 
 CALLPLAYSID	MACRO
 	move.l	_PlaySidBase,a6
