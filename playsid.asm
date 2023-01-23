@@ -769,12 +769,6 @@ sid2Enabled:
         DPRINT  "StopSong"
 		movem.l	d2-d7/a2-a6,-(a7)
 
- if DEBUG
-        moveq   #0,d0
-        move.w  psb_TimerConstB(a6),d0
-        DPRINT  "psb_TimerConstB=%ld"
- endif
-
 		cmp.w	#PM_STOP,psb_PlayMode(a6)
 		beq.s	.Exit
 		cmp.w	#PM_PAUSE,psb_PlayMode(a6)
@@ -9154,6 +9148,7 @@ desmsgDebugAndPrint
     rts
 
 CloseDebug:
+    pushm   all
     move.l  _DOSBase(pc),a6
     cmp.w   #0,a6
     beq     .2
@@ -9167,6 +9162,7 @@ CloseDebug:
 .2
     clr.l   _DOSBase
     clr.l   _output
+    popm    all
     rts
 
 _DOSBase        ds.l    1
