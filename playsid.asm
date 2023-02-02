@@ -8560,12 +8560,6 @@ switchAndFillBuffer:
     * d0 = bytes received, make words
     * rounds down, so may discard one byte
 
-    * Low bound check, 600 Hz rate would equal to about 46
-    cmp     #40,d0
-    bhs.b   .low1
-    moveq   #40,d0
-.low1
-
     lsr     #1,d0
     move    d0,$a4+$dff000   * words
     move    d0,$d4+$dff000   * words
@@ -8610,11 +8604,6 @@ switchAndFillBuffer:
     lea     residData2,a0
     jsr     (a3)
 
-    * Low bound check, 600 Hz rate would equal to about 46
-    cmp     #40,d0
-    bhs.b   .low2
-    moveq   #40,d0
-.low2
     * d0 = bytes received, make words
     * rounds down, so may discard one byte
     lsr     #1,d0
