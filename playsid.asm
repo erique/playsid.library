@@ -71,8 +71,9 @@ SAMPLE_BUFFER_SIZE = 600
 
 * Enable debug logging into a console window
 * Enable debug colors
-DEBUG = 0
-SERIALDEBUG = 0
+DEBUG = 1
+SERIALDEBUG = 1
+COUNTERS = 0
 
 
 * Macro to print to debug console
@@ -8300,7 +8301,7 @@ stopResidWorkerTask:
     DPRINT  "stopResidWorkerTask"    
     movem.l d0-a6,-(sp)
     tst.l   residWorkerTask
-    beq.b   .done
+    beq     .done
 
     move.l  4.w,a6
     moveq   #0,d0
@@ -8315,6 +8316,28 @@ stopResidWorkerTask:
     ; Wait for confirmation
     moveq   #SIGF_SINGLE,d0
     jsr     _LVOWait(a6)
+
+ if COUNTERS
+    jsr     sid_get_counters
+    lea     -20(sp),sp
+.cl
+    * 4char id
+    move.l  8(a2),(sp)
+    clr.b   4(sp)
+    move.l  sp,d0
+
+    * Count
+    move.l  (a2),d1
+    move.l  4(a2),d2
+    add     #12,a2
+
+    DPRINT  "%s=0x%08.8lx%08.8lx"
+
+    dbf     d3,.cl
+   
+    lea     20(sp),sp
+ endif
+
 .done 
     movem.l (sp)+,d0-a6
     rts
