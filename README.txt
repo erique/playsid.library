@@ -102,5 +102,6 @@ Changelog
               speeds up to four worked properly.
             - A bunch of reSID speed optimizations, enabling 
               the heavier Oversample x2 and x3 modes to with most
-              tunes on 50MHz 060.
+              tunes on 50MHz 060. About 20% faster compared
+              to previous.
            
