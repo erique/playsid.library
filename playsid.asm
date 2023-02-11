@@ -71,8 +71,8 @@ SAMPLE_BUFFER_SIZE = 600
 
 * Enable debug logging into a console window
 * Enable debug colors
-DEBUG = 1
-SERIALDEBUG = 1
+DEBUG = 0
+SERIALDEBUG = 0
 COUNTERS = 0
 
 
