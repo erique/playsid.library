@@ -95,9 +95,9 @@ Changelog
            reSID speed optimizations, some fixes
 - 2022-11-19: Fix bug where playback would get stuck for a while, 
               example tune: JCH/Hawaii
-- 2023-02: - Added support for 2SIDs, stereo SIDs with 6 audio
-             channels. This works only in reSID mode, and takes about
-             double the amount of CPU compared to ordinary SIDs.
+- 2023-02   - Added support for 2SIDs, stereo SIDs with 6 audio
+  v1.4        channels. This works only in reSID mode, and takes about
+              double the amount of CPU compared to ordinary SIDs.
             - Full support for multispeed tunes added, earlier only
               speeds up to four worked properly.
             - A bunch of reSID speed optimizations, enabling 
