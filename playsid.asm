@@ -34,6 +34,7 @@ ENABLE_LEV4PLAY = 1
 PAULA_PERIOD=128    
 PAL_CLOCK=3546895
 * Sampling frequency: PAL_CLOCK/PAULA_PERIOD=27710.1171875
+PLAYBACK_FREQ = PAL_CLOCK/PAULA_PERIOD
 
 * "single speed"
 * reSID update frequency 50 Hz:
@@ -124,6 +125,10 @@ SPRINT  macro
        	include	dos/var.i
         include lvo/timer_lib.i
         include devices/timer.i
+        include	devices/ahi.i
+        include	devices/ahi_lib.i
+    	include	dos/dostags.i
+
 	LIST
 *=======================================================================*
 *	EXTERNAL REFERENCES						*
@@ -211,6 +216,7 @@ AutoInitVectors	;***** Standard System Routines *****
         dc.l    @GetResidAudioBuffer
         dc.l    @MeasureResidPerformance
         dc.l    @GetSongSpeed
+        dc.l    @SetAHIMode
 		dc.l	-1
 
 AutoInitStructure
@@ -335,6 +341,7 @@ AutoInitFunction
         DPRINT  "AllocEmulResource"
 		;CALLEXEC Forbid
 		movem.l	d2-d7/a2-a6,-(a7)
+    
 		tst.w	psb_EmulResourceFlag(a6)
 		beq.s	.LibOK
 		moveq	#SID_LIBINUSE,d0
@@ -505,6 +512,8 @@ GetEnvDebugFlag:
         bne.b   .1
 .2      jsr     resetResid
 .1  
+        jsr     ahiStop
+
         * Undefine operating mode so that will be determined again the next time.
         move.w  #-1,psb_OperatingMode(a6)
 .Exit		
@@ -527,7 +536,8 @@ GetEnvDebugFlag:
 
 *-----------------------------------------------------------------------*
 
-; in:
+* To be called before AllocEmulResource
+* in:
 *   d0 = Operating mode
 *   d1 = reSID mode, optional
 @SetOperatingMode
@@ -547,6 +557,12 @@ GetEnvDebugFlag:
         moveq   #0,d1
     	move.w	psb_ResidMode(a6),d1
 		rts
+
+@SetAHIMode
+        DPRINT  "SetAHIMode=%lx"
+        move.l  d0,psb_AhiMode(a6)
+        move.l  d0,ahiMode
+        rts
 
 *-----------------------------------------------------------------------*
 @SetVertFreq	move.w	d0,psb_VertFreq(a6)
@@ -667,7 +683,7 @@ GetEnvDebugFlag:
 
 
 sid2Enabled:
-    move.w  psb_Sid2Address(a6),d0
+    tst.w  psb_Sid2Address(a6)
     rts
 
 @GetSongSpeed
@@ -4695,6 +4711,7 @@ mute_sid:
 *	INTERRUPT HANDLING ROUTINES					*
 *=======================================================================*
 OpenIRQ		
+        DPRINT  "OpenIRQ"
         move.l	a6,timerAIntrPSB
 		move.l	a6,PlayIntrPSB
 	    move.l	psb_Chan1(a6),level4Intr1Data
@@ -5395,7 +5412,19 @@ SelectNewVolume
 EndOfLibrary
 
 @FreeEmulAudio	jmp	@FreeEmulAudio_impl.l
-@AllocEmulAudio	jmp	@AllocEmulAudio_impl.l
+
+@AllocEmulAudio	
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .1
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        bne.b   .2
+.1      cmp.w   #REM_AHI,psb_ResidMode(a6)
+        bne.b   .2 
+        * No audio alloc when AHI in use
+        moveq   #0,d0 * no error
+        rts
+.2
+        jmp	@AllocEmulAudio_impl.l
 
 *=======================================================================*
 *                                                                       *
@@ -8006,7 +8035,7 @@ residData2     ds.b    resid_SIZEOF
 
 
 * Out:
-*   d0 = buffer length in bytes
+*   d0 = buffer length in samples
 *   d1 = period value used
 *   a0 = audio buffer pointer sid
 *   a1 = same as a0 or audio buffer pointer for sid 2
@@ -8027,7 +8056,7 @@ residData2     ds.b    resid_SIZEOF
 * In:
 *    a6 = PlaySID base
 
-initResid
+initResid:
     DPRINT  "initResid"
     movem.l d1-a6,-(sp)
     move.l  psb_reSID(a6),a0
@@ -8052,6 +8081,11 @@ initResid
     beq.b   .go
     moveq   #SAMPLING_METHOD_INTERPOLATE14,d1
     cmp     #REM_INTERPOLATE,d0
+    beq.b   .go
+    
+    
+    moveq   #SAMPLING_METHOD_SAMPLE_FAST16,d1
+    cmp     #REM_AHI,d0
     beq.b   .go
     ; Default
     moveq   #SAMPLING_METHOD_SAMPLE_FAST14,d1
@@ -8211,12 +8245,19 @@ allocResidMemory:
     cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
     bne.b   .y
 .z
+    move.l  a6,a0
     * Allocate audio buffers
     * Two per 14-bit channel
     * Times two for double buffering
     * Times two for two SIDs
     move.l  #(SAMPLE_BUFFER_SIZE)*8,d0
+  
     move.l  #MEMF_CHIP!MEMF_CLEAR,d1
+    cmp.w   #REM_AHI,psb_ResidMode(a0)
+    bne     .2
+    * AHI buffers can be in public mem
+    move.l  #MEMF_PUBLIC!MEMF_CLEAR,d1
+.2
     move.l  4.w,a6
     jsr     _LVOAllocMem(a6)
     tst.l   d0
@@ -8224,11 +8265,31 @@ allocResidMemory:
 
     move.l  d0,a0
     move.l  a0,bufferMemoryPtr
+    move.l  a0,a2
     lea     sidBufferAHi(pc),a1
     moveq   #8-1,d0
 .1  move.l  a0,(a1)+
     lea     SAMPLE_BUFFER_SIZE(a0),a0
     dbf     d0,.1
+
+    * Also set up ahi sounds, these are word buffers
+    move.l  #SAMPLE_BUFFER_SIZE*2,d0
+    lea     ahiSound1(pc),a0
+    move.l  a2,4(a0)
+    move.l  d0,8(a0)
+    add.l   d0,a2
+    lea     ahiSound2(pc),a0
+    move.l  a2,4(a0)
+    move.l  d0,8(a0)
+    add.l   d0,a2
+    lea     ahiSound3(pc),a0
+    move.l  a2,4(a0)
+    move.l  d0,8(a0)
+    add.l   d0,a2
+    lea     ahiSound4(pc),a0
+    move.l  a2,4(a0)
+    move.l  d0,8(a0)
+
 .y  moveq   #1,d0
 .x  tst.l   d0
     pop     a6
@@ -8270,21 +8331,9 @@ createResidWorkerTask:
     moveq   #SIGF_SINGLE,d1
     jsr     _LVOSetSignal(a6)
 
-    lea     workerTaskStruct,a0
-    move.b  #NT_TASK,LN_TYPE(a0)
-    ; Task priority: 0
-    move.b  #0,LN_PRI(a0)
-    move.l  #.workerTaskName,LN_NAME(a0)
-    lea     workerTaskStack,a1
-    move.l  a1,TC_SPLOWER(a0)
-    lea     4096(a1),a1
-    move.l  a1,TC_SPUPPER(a0)
-    move.l  a1,TC_SPREG(a0)
-
-    move.l  a0,a1
-    lea     residWorkerEntryPoint(pc),a2
-    sub.l   a3,a3
-    jsr     _LVOAddTask(a6)
+    move.l  psb_DOSBase(a5),a6
+    move.l  #.tags,d1
+    jsr     _LVOCreateNewProcTagList(a6)
 
     * Wait here until the task is fully running
     moveq   #SIGF_SINGLE,d0
@@ -8292,6 +8341,11 @@ createResidWorkerTask:
 .x
     movem.l (sp)+,d0-a6
     rts
+
+.tags
+    dc.l    NP_Entry,residWorkerEntryPoint
+    dc.l    NP_Name,.workerTaskName
+    dc.l    TAG_END
 
 .workerTaskName
     dc.b    "reSID",0
@@ -8350,6 +8404,29 @@ residWorkerEntryPoint
     sub.l   a1,a1
     jsr     _LVOFindTask(a6)
     move.l  d0,residWorkerTask
+
+    move.l  _PlaySidBase,a6
+    cmp.w   #REM_AHI,psb_ResidMode(a6)
+    bne     .notAhi
+
+    bsr     ahiInit
+    SPRINT  "task:ahiInit=%ld"
+    ; TODO: ERROR case
+    tst.l   d0
+    beq     .x
+    clr.l   psb_AhiBankLeft(a6)
+    clr.l   psb_AhiBankRight(a6)
+    bsr     ahiSwitchAndFillLeftBuffer
+    bsr     ahiSwitchAndFillRightBuffer
+	moveq	#AHISF_IMM,d4
+    bsr     ahiPlayLeftBuffer
+	moveq	#AHISF_IMM,d4
+    bsr     ahiPlayRightBuffer
+    bra     .continue
+
+.notAhi
+    SPRINT  "task:normal init"
+
  ifne ENABLE_LEV4PLAY 
     move.l  #residLevel1Intr,residLevel4Intr1Data
  else
@@ -8370,8 +8447,7 @@ residWorkerEntryPoint
     move.l  #residLevel1HandlerDebug,residLevel1HandlerPtr
  else
     move.l  #residLevel1Handler,residLevel1HandlerPtr
- 	move.l	_PlaySidBase,a0
-    tst.w   psb_Debug(a0)
+    tst.w   psb_Debug(a6)
     beq     .1
     move.l  #residLevel1HandlerDebug,residLevel1HandlerPtr
 .1
@@ -8380,8 +8456,11 @@ residWorkerEntryPoint
 
     lea     residLevel4Intr1,a1
     moveq   #INTB_AUD0,d0		; Allocate Level 4
+    move.l  4.w,a6
     jsr     _LVOSetIntVector(a6)
     move.l  d0,oldVecAud0
+
+    move.l  _PlaySidBase,a6
 
     * CH0 = high 8 bits - full volume
     * CH3 = low 6 bits  - volume 1
@@ -8393,8 +8472,6 @@ residWorkerEntryPoint
     move    #PAULA_PERIOD,$d6+$dff000
     
     bsr     residSetVolume
-
-    move.l  _PlaySidBase,a6
     bsr     switchAndFillBuffer
     bsr     dmawait     * probably not needed
 
@@ -8417,7 +8494,7 @@ residWorkerEntryPoint
     ; queue buffer A
     ; fill A
     ; ... etc
-
+.continue
     ; Signal that we're running
     move.l  4.w,a6
     move.l  mainTask(pc),a1
@@ -8434,6 +8511,7 @@ residWorkerEntryPoint
 
   ifeq ENABLE_LEV4PLAY
     push    a6
+    move.l  _PlaySidBase,a6
     bsr     switchAndFillBuffer
     pop     a6
   endif
@@ -8441,6 +8519,18 @@ residWorkerEntryPoint
 
 .x
     SPRINT  "task:stopping"
+
+    move.l  _PlaySidBase,a6
+    cmp.w   #REM_AHI,psb_ResidMode(a6)
+    bne     .notAhi2
+    bsr     ahiStop
+
+    move.l  4.w,a6
+    jsr     _LVOForbid(a6)
+    jsr     _LVODisable(a6)
+    bra     .continueExit
+
+.notAhi2
     move.l  4.w,a6
     jsr     _LVOForbid(a6)
     jsr     _LVODisable(a6)
@@ -8457,6 +8547,7 @@ residWorkerEntryPoint
     jsr     _LVOSetIntVector(a6)
     move.l  d0,oldVecAud0
 
+.continueExit
     clr.l   residWorkerTask
 
     move.l  mainTask(pc),a1
@@ -8679,6 +8770,8 @@ dmawait
     moveq   #SAMPLING_METHOD_INTERPOLATE14,d4
     cmp.b   #REM_INTERPOLATE,d0
     beq.b   .go
+
+    * Default measuring mode
     moveq   #SAMPLING_METHOD_SAMPLE_FAST14,d4
 .go
   if DEBUG
@@ -8988,6 +9081,342 @@ residLevel1HandlerPtr:
 
 
 
+
+*-----------------------------------------------------------------------*
+*
+* AHI inteface
+*
+*-----------------------------------------------------------------------*
+
+
+ahiInit:
+    SPRINT  "ahiInit"
+	pushm	all
+
+    move.l  _PlaySidBase,a5
+
+	sub.l	a1,a1
+	move.l	4.w,a6
+	jsr     _LVOFindTask(a6)
+	move.l	d0,psb_AhiTask(a5)
+	SPRINT	"task=%lx"
+
+	OPENAHI	1
+    DPRINT  "base=%lx"
+	move.l	d0,psb_AhiBase(a5)
+    beq	.ahi_error	
+	move.l	d0,a6
+
+	lea	ahiTags(pc),a1
+	jsr	_LVOAHI_AllocAudioA(a6)
+    DPRINT  "AllocAudio=%lx"
+	move.l	d0,psb_AhiCtrl(a5)
+	beq	.ahi_error
+	move.l	d0,a2
+
+	moveq	#0,d0				;sample 1
+	moveq	#AHIST_DYNAMICSAMPLE,d1
+	lea	ahiSound1(pc),a0
+	jsr	_LVOAHI_LoadSound(a6)
+    DPRINT  "LoadSound=%lx"
+	tst.l	d0
+	bne	.ahi_error
+
+	moveq	#1,d0				;sample 2
+	moveq	#AHIST_DYNAMICSAMPLE,d1
+	lea	ahiSound2(pc),a0
+	jsr	_LVOAHI_LoadSound(a6)
+    DPRINT  "LoadSound=%lx"
+	tst.l	d0
+	bne	.ahi_error
+
+	moveq	#2,d0				;sample 3
+	moveq	#AHIST_DYNAMICSAMPLE,d1
+	lea	ahiSound3(pc),a0
+	jsr	_LVOAHI_LoadSound(a6)
+    DPRINT  "LoadSound=%lx"
+	tst.l	d0
+	bne	.ahi_error
+
+	moveq	#3,d0				;sample 4
+	moveq	#AHIST_DYNAMICSAMPLE,d1
+	lea	ahiSound4(pc),a0
+	jsr	_LVOAHI_LoadSound(a6)
+    DPRINT  "LoadSound=%lx"
+	tst.l	d0
+	bne	.ahi_error
+
+;	move.l	ahiMode(pc),d0
+;	lea	getattr_tags(pc),a1
+;	jsr	_LVOAHI_GetAudioAttrsA(a6)
+;    DPRINT  "GetAudioAttrs=%lx"
+;    move.l  attr_stereo,d0
+;    DPRINT  "stereo=%ld"
+;    move.l  attr_panning,d0
+;    DPRINT  "panning=%ld"
+
+;	bsr	ahi_setmastervol
+;	move	mainvolume+var_b(pc),d0
+;	bsr	vol
+
+
+    ; ---------- Frequency ch1
+    move.l  #1,ahiChannels
+    moveq	#0,d0		* channel
+    move.l  #PLAYBACK_FREQ,d1
+	moveq	#AHISF_IMM,d2	* flags
+	move.l	psb_AhiCtrl(a5),a2
+	jsr     _LVOAHI_SetFreq(a6)
+    DPRINT  "SetFreq=%lx"
+
+    ; ---------- Volume ch1
+	moveq	#0,d0		* channel
+    move.l  #$10000,d1  * max volume
+
+    move.l  #$8000,d2   * pan to center
+    tst.w   psb_Sid2Address(a5)
+    beq     .monoPan
+    moveq   #0,d0       * if stereo, pan max
+.monoPan
+	moveq	#AHISF_IMM,d3	* flags
+	move.l	psb_AhiCtrl(a5),a2
+	jsr	    _LVOAHI_SetVol(a6)
+    DPRINT  "SetVol=%lx"
+
+    tst.w   psb_Sid2Address(a5)
+    beq     .mono
+    move.l  #2,ahiChannels
+
+    ; ---------- Frequency ch2
+	moveq	#1,d0		* channel
+    move.l  #PLAYBACK_FREQ,d1
+	moveq	#AHISF_IMM,d2	* flags
+	move.l	psb_AhiCtrl(a5),a2
+	jsr	_LVOAHI_SetFreq(a6)
+    DPRINT  "SetFreq=%lx"
+
+    ; ---------- Volume ch2
+	moveq	#1,d0		* channel
+    move.l  #$10000,d1  * max volume
+    move.l  #$10000,d2  * pan max right
+	moveq	#AHISF_IMM,d2	* flags
+	move.l	psb_AhiCtrl(a5),a2
+	jsr	_LVOAHI_SetVol(a6)
+    DPRINT  "SetVol=%lx"
+.mono
+
+	lea	ahiCtrlTags(pc),a1
+
+	jsr	_LVOAHI_ControlAudioA(a6)
+    DPRINT  "ControlAudio=%lx"
+	tst.l	d0
+	bne.b	.ahi_error
+
+	popm	all
+    SPRINT  "ahiInit ok"
+	moveq	#1,d0   * ok
+	rts
+
+.ahi_error
+	popm	all
+    SPRINT  "ahiInit error"
+	moveq	#0,d0   * error
+	rts
+
+
+
+* in:
+*   a6 = PlaySidBase
+ahiSwitchAndFillLeftBuffer:
+    eor.w   #1,psb_AhiBankLeft+2(a6)
+    
+    * Select target sound
+    lea     ahiSound1(pc),a3
+    tst.l   psb_AhiBankLeft(a6)
+    beq     .0
+    lea     ahiSound2(pc),a3
+.0  
+    * a1 = output buffer
+    move.l  4(a3),a1
+
+    move.l  cyclesPerFrame(pc),d0
+    move.l  #SAMPLE_BUFFER_SIZE,d1
+    move.l  psb_reSID(a6),a0
+    move.l  clockRoutine(pc),a3
+    jsr     (a3)
+    move.l  _PlaySidBase,a6
+    move.l  d0,psb_AhiSamplesOutLeft(a6)
+    rts
+
+ahiSwitchAndFillRightBuffer:
+    tst.w   psb_Sid2Address(a6)
+    beq     .x
+
+    eor.w   #1,psb_AhiBankRight+2(a6)
+    
+    * Select target sound
+    lea     ahiSound3(pc),a3
+    tst.l   psb_AhiBankRight(a6)
+    beq     .0
+    lea     ahiSound4(pc),a3
+.0  
+    * a1 = output buffer
+    move.l  4(a3),a1
+
+    move.l  cyclesPerFrame(pc),d0
+    move.l  #SAMPLE_BUFFER_SIZE,d1
+    move.l  psb_reSID2(a6),a0
+    move.l  clockRoutine(pc),a3
+    jsr     (a3)
+    move.l  _PlaySidBase,a6
+    move.l  d0,psb_AhiSamplesOutRight(a6)
+.x
+    rts
+
+* in:
+*   d4 = ahi flags
+ahiPlayLeftBuffer:
+	move	#0,d0		* channel
+    move.l  psb_AhiBankLeft(a6),d1  * sound number to play
+	moveq	#0,d2		* offset
+	move.l	psb_AhiSamplesOutLeft(a6),d3	* samples to play 
+	;moveq   #0,d4
+	move.l	psb_AhiCtrl(a6),a2
+    push    a6
+	move.l	psb_AhiBase(a6),a6
+	jsr     _LVOAHI_SetSound(a6)
+    pop     a6
+    rts
+
+* in:
+*   d4 = ahi flags
+ahiPlayRightBuffer:
+    tst.w   psb_Sid2Address(a6)
+    beq     .x
+
+	move	#1,d0		* channel
+    move.l  psb_AhiBankRight(a6),d1  * sound number to play
+    addq.l  #2,d1
+	moveq	#0,d2		* offset
+	move.l	psb_AhiSamplesOutRight(a6),d3		* samples to play 
+	;moveq   #0,d4
+	move.l	psb_AhiCtrl(a6),a2
+    push    a6
+	move.l	psb_AhiBase(a6),a6
+	jsr     _LVOAHI_SetSound(a6)
+    pop     a6
+.x
+    rts
+
+
+
+ahiSound1
+	dc.l	AHIST_M16S	* type
+	dc.l	0	* addr
+	dc.l	0	* len
+
+ahiSound2
+	dc.l	AHIST_M16S
+	dc.l	0	* addr
+	dc.l	0	* len
+
+
+ahiSound3
+	dc.l	AHIST_M16S
+	dc.l	0	* addr
+	dc.l	0	* len
+
+ahiSound4
+	dc.l	AHIST_M16S
+	dc.l	0	* addr
+	dc.l	0	* len
+
+ahiStop:
+    SPRINT  "ahiStop"
+	pushm	all
+    move.l  _PlaySidBase,a5
+
+ 	sub.l	a1,a1
+	move.l	4.w,a6
+	jsr     _LVOFindTask(a6)
+	cmp.l	psb_AhiTask(a5),d0
+	bne.b	.x
+
+	move.l	psb_AhiBase(a5),d0
+    beq.b	.1
+	move.l	d0,a6
+
+	move.l	psb_AhiCtrl(a5),a2
+	jsr	_LVOAHI_FreeAudio(a6)
+	CLOSEAHI
+	SPRINT	"AHI_FreeAudio"
+.1	
+    clr.l   psb_AhiBase(a5)
+.x	
+    popm	all
+	rts
+
+ahiCtrlTags:
+	dc.l	AHIC_Play,1
+	dc.l	TAG_DONE
+
+ahiTags
+	dc.l	AHIA_MixFreq,PLAYBACK_FREQ
+	dc.l	AHIA_Channels,2
+ahiChannels = *-4
+	dc.l	AHIA_Sounds,4
+	dc.l	AHIA_AudioID,$20004	; paula 8-bit stereo
+ahiMode = *-4
+
+	dc.l	AHIA_SoundFunc,.soundFunc
+	dc.l	TAG_DONE
+
+.soundFunc:
+	ds.b	MLN_SIZE
+	dc.l	.soundFuncImpl
+	dc.l	0
+	dc.l	0
+
+* in:
+* a0	struct Hook *
+* a1	struct AHISoundMessage *
+* a2	struct AHIAudioCtrl *
+.soundFuncImpl:
+    tst.w   ahism_Channel(a1)
+    bne     .right
+
+    pushm   d2-d7/a2-a6
+    move.l  _PlaySidBase,a6
+    cmp.w   #PM_PLAY,psb_PlayMode(a6)
+    bne.b   .x
+    jsr     Play64
+.x
+    bsr     ahiSwitchAndFillLeftBuffer
+    moveq   #0,d4
+    bsr     ahiPlayLeftBuffer
+    popm    d2-d7/a2-a6
+.y
+	rts
+
+.right
+    pushm   d2-d7/a2-a6
+    move.l  _PlaySidBase,a6
+    bsr     ahiSwitchAndFillRightBuffer
+    moveq   #0,d4
+    bsr     ahiPlayRightBuffer
+    popm    d2-d7/a2-a6
+    rts
+
+
+
+
+*-----------------------------------------------------------------------*
+*
+* Debug
+*
+*-----------------------------------------------------------------------*
+
+
   ifne ENABLE_REGDUMP
 saveDump
     lea     .d(pc),a0
@@ -9181,3 +9610,4 @@ _DOSBase        ds.l    1
 _output			ds.l 	1
 _debugDesBuf	ds.b	1024
  endif ;; DEBUG
+

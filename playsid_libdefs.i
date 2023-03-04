@@ -174,7 +174,7 @@ FREE		MACRO
 	UWORD	psb_AudioDevice
 	APTR	psb_AudioIO
 	APTR	psb_AudioMP
-    ; New fields:
+    ; New fields added by KPK:
     UWORD   psb_Volume
     APTR    psb_reSID
     UWORD   psb_OperatingMode
@@ -184,6 +184,15 @@ FREE		MACRO
     UWORD   psb_Sid2Address
     ULONG   psb_SamplesPerFrame
     UWORD   psb_Debug
+	UWORD	psb_OldC64TimerB
+    ULONG   psb_AhiMode
+    APTR    psb_AhiTask
+    APTR    psb_AhiBase
+    APTR    psb_AhiCtrl
+    ULONG   psb_AhiBankLeft
+    ULONG   psb_AhiSamplesOutLeft
+    ULONG   psb_AhiBankRight
+    ULONG   psb_AhiSamplesOutRight
 	LABEL	psb_SIZEOF
 
 ; --- Error --------------------------------------------------------------
@@ -222,6 +231,7 @@ REM_OVERSAMPLE2    equ 1
 REM_OVERSAMPLE3    equ 2
 REM_OVERSAMPLE4    equ 3
 REM_INTERPOLATE    equ 4
+REM_AHI            equ 5
 
 ; ========================================================================;
 ; === DisplayData ========================================================;
