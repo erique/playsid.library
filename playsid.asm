@@ -9176,7 +9176,7 @@ ahiInit:
     move.l  #$8000,d2   * pan to center
     tst.w   psb_Sid2Address(a5)
     beq     .monoPan
-    moveq   #0,d0       * if stereo, pan max
+    moveq   #0,d2       * if stereo, max left
 .monoPan
 	moveq	#AHISF_IMM,d3	* flags
 	move.l	psb_AhiCtrl(a5),a2
@@ -9199,7 +9199,7 @@ ahiInit:
 	moveq	#1,d0		* channel
     move.l  #$10000,d1  * max volume
     move.l  #$10000,d2  * pan max right
-	moveq	#AHISF_IMM,d2	* flags
+	moveq	#AHISF_IMM,d3	* flags
 	move.l	psb_AhiCtrl(a5),a2
 	jsr	_LVOAHI_SetVol(a6)
     DPRINT  "SetVol=%lx"
