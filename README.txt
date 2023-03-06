@@ -104,4 +104,5 @@ Changelog
               the heavier Oversample x2 and x3 modes to with most
               tunes on 50MHz 060. About 20% faster compared
               to previous.
-           
+- 2023-03   - AHI support
+  v1.5           

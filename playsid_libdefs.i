@@ -14,14 +14,14 @@ PLAYSID_LIBDEFS_I SET  1
 ;************************************************************************
 
 PSIDLIB_VERSION		equ	1
-PSIDLIB_REVISION	equ	4
+PSIDLIB_REVISION	equ	5
 
 PSIDLIB_NAME	MACRO
 		dc.b	"playsid.library",0
 		ENDM
 
 PSIDLIB_IDSTRING MACRO
-		dc.b	"playsid.library 1.4 (11.2.2023) reSID+SIDBlaster",13,10,0
+		dc.b	"playsid.library 1.5 (6.3.2023) reSID+SIDBlaster",13,10,0
 		ENDM
 
 PSIDLIB_COPYRIGHT MACRO
