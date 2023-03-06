@@ -5414,6 +5414,8 @@ EndOfLibrary
 @FreeEmulAudio	jmp	@FreeEmulAudio_impl.l
 
 @AllocEmulAudio	
+        cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
+        beq.b   .3
         cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
         beq.b   .1
         cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
@@ -5421,6 +5423,7 @@ EndOfLibrary
 .1      cmp.w   #REM_AHI,psb_ResidMode(a6)
         bne.b   .2 
         * No audio alloc when AHI in use
+.3
         moveq   #0,d0 * no error
         rts
 .2
@@ -8501,7 +8504,7 @@ residWorkerEntryPoint
     moveq   #SIGF_SINGLE,d0
     jsr     _LVOSignal(a6)
 
-    SPRINT  "task:wait"
+    SPRINT  "task:active"
 .loop
     move.l  #SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D,d0
     jsr     _LVOWait(a6)
