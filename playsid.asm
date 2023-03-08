@@ -4987,9 +4987,11 @@ timerBServer
 
 *-----------------------------------------------------------------------*
 softwServer	move.l	a6,-(a7)		; Play it..
+        cmp.w   #PM_PLAY,psb_PlayMode(a1)
+        bne.b   .x
 		move.l	a1,a6
-		bsr	Play64
-		move.l	(a7)+,a6
+        bsr     Play64
+.x      move.l	(a7)+,a6
 		moveq	#0,d0
 		rts
 
