@@ -464,13 +464,9 @@ SetDefaultOperatingMode:
 
 
 GetEnvDebugFlag:
- REM
-        DPRINT  "GetEnvDebugFlag"
         lea     -20(sp),sp
         move.l  a6,a5
         move.l  psb_DOSBase(a5),a6
-        move.l  a6,d0
-        DPRINT  "dos=%lx"
         cmp     #36,LIB_VERSION(a6)
         blo     .continue
 
@@ -494,8 +490,7 @@ GetEnvDebugFlag:
 .envVarNameDebug:
     dc.b    "PlaySIDDebug",0
     even
- EREM
- 
+
 *-----------------------------------------------------------------------*
 @FreeEmulResource
         DPRINT  "FreeEmulResource"
