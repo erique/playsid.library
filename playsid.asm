@@ -8168,7 +8168,13 @@ initResid:
 * in:
 *   a6 = PlaySidBase
 calcSamplesAndCyclesPerFrameFromCIATicks:
-
+    cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+    beq.b   .go
+    cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+    beq.b   .go
+    rts
+.go
+      movem.l d0-d2/a0,-(sp)
 ; Freq in Hz =  709379.1 / (28419/2) = 49.9228
 ; samples per frame = 27710.1171875 /(709379.1 / (28419/2) )
 ; samples per frame = (27710.1171875 * (28419/2)) / 709379.1 
@@ -8210,6 +8216,7 @@ calcSamplesAndCyclesPerFrameFromCIATicks:
     divu.l  #1<<(16+7),d1:d0
  EREM
     move.l  d0,cyclesPerFrame
+    movem.l (sp)+,d0-d2/a0
     rts
 
 
