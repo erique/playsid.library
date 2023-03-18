@@ -8432,8 +8432,10 @@ residWorkerEntryPoint
     bsr     ahiSwitchAndFillRightBuffer
 	moveq	#AHISF_IMM,d4
     bsr     ahiPlayLeftBuffer
+    DPRINT  "task:left=%ld"
 	moveq	#AHISF_IMM,d4
     bsr     ahiPlayRightBuffer
+    DPRINT  "task:right=%ld"
     bra     .continue
 
 .notAhi
@@ -8537,6 +8539,8 @@ residWorkerEntryPoint
     bne     .notAhi2
     bsr     ahiStop
 
+    DPRINT  "task:ahi stopped"
+    
     move.l  4.w,a6
     jsr     _LVOForbid(a6)
     jsr     _LVODisable(a6)
@@ -9119,6 +9123,13 @@ ahiInit:
     beq	.ahi_error	
 	move.l	d0,a6
 
+    lea     ahiChannels(pc),a0
+    move.l  #1,(a0)
+    tst.w   psb_Sid2Address(a5)
+    beq     .monoMode
+    addq.l  #1,(a0)
+.monoMode
+
 	lea	ahiTags(pc),a1
 	jsr	_LVOAHI_AllocAudioA(a6)
     DPRINT  "AllocAudio=%lx"
@@ -9173,7 +9184,6 @@ ahiInit:
 
 
     ; ---------- Frequency ch1
-    move.l  #1,ahiChannels
     moveq	#0,d0		* channel
     move.l  #PLAYBACK_FREQ,d1
 	moveq	#AHISF_IMM,d2	* flags
@@ -9197,7 +9207,6 @@ ahiInit:
 
     tst.w   psb_Sid2Address(a5)
     beq     .mono
-    move.l  #2,ahiChannels
 
     ; ---------- Frequency ch2
 	moveq	#1,d0		* channel
@@ -9352,16 +9361,22 @@ ahiStop:
 	move.l	4.w,a6
 	jsr     _LVOFindTask(a6)
 	cmp.l	psb_AhiTask(a5),d0
-	bne.b	.x
+	bne 	.x
 
 	move.l	psb_AhiBase(a5),d0
-    beq.b	.1
+    beq 	.1
 	move.l	d0,a6
+
+    lea	    ahiStopCtrlTags(pc),a1
+	move.l	psb_AhiCtrl(a5),a2
+	jsr	_LVOAHI_ControlAudioA(a6)
+    DPRINT  "AHI_ControlAudioA=%ld"
 
 	move.l	psb_AhiCtrl(a5),a2
 	jsr	_LVOAHI_FreeAudio(a6)
+	SPRINT	"AHI_FreeAudio done"
 	CLOSEAHI
-	SPRINT	"AHI_FreeAudio"
+    SPRINT	"CLOSE AHI done"
 .1	
     clr.l   psb_AhiBase(a5)
 .x	
@@ -9370,6 +9385,10 @@ ahiStop:
 
 ahiCtrlTags:
 	dc.l	AHIC_Play,1
+	dc.l	TAG_DONE
+
+ahiStopCtrlTags:
+	dc.l	AHIC_Play,0
 	dc.l	TAG_DONE
 
 ahiTags
