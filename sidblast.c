@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <proto/exec.h>
 #include <proto/poseidon.h>
 #include <exec/alerts.h>
@@ -44,7 +45,7 @@ struct SIDBlasterUSB
 static struct SIDBlasterUSB* usb = NULL;
 
 static void SIDTask();
-static void writePacket(uint8_t* packet, uint16_t length);
+static bool writePacket(uint8_t* packet, uint16_t length);
 static uint8_t readResult();
 static uint32_t deviceUnplugged(register struct Hook *hook __asm("a0"), register APTR object __asm("a2"), register APTR message __asm("a1"));
 typedef ULONG (*HOOKFUNC_ULONG)();  // NDK typedef HOOKFUNC with 'unsigned long'
@@ -181,8 +182,11 @@ uint8_t sid_read_reg(register uint8_t reg __asm("d0"))
     usb->ctrlTask = FindTask(NULL);
 
     uint8_t buf[] = { 0xa0 + reg };
-    writePacket(buf, sizeof(buf));
+    bool success = writePacket(buf, sizeof(buf));
     Signal(usb->mainTask, SIGBREAKF_CTRL_D);
+
+    if (!success)
+        return 0xff;
 
     Wait(SIGBREAKF_CTRL_D);
     usb->ctrlTask = NULL;
@@ -520,17 +524,24 @@ static uint32_t deviceUnplugged(register struct Hook *hook __asm("a0"), register
     return 0;
 }
 
-static void writePacket(uint8_t* packet, uint16_t length)
+static bool writePacket(uint8_t* packet, uint16_t length)
 {
     while(TRUE)
     {
-        Disable();
+        uint16_t bufNum = usb->outBufferNum;
 
-        struct Buffer* buffer = &usb->outBuffers[usb->outBufferNum];
+        struct Buffer* buffer = &usb->outBuffers[bufNum];
         if ((sizeof(buffer->data) - length) < buffer->pending)
         {
-            // not enough space, retry
+            // not enough space, abort
             SysBase->SysFlags |= 0x8000; // trigger reschedule
+            return false;
+        }
+
+        Disable();
+        if (bufNum != usb->outBufferNum)
+        {
+            // the buffer changed - retry
             Enable();
             continue;
         }
@@ -542,6 +553,7 @@ static void writePacket(uint8_t* packet, uint16_t length)
         Enable();
         break;
     }
+    return true;
 }
 
 static uint8_t readResult()
