@@ -35,6 +35,9 @@ struct SIDBlasterUSB
     struct Buffer       outBuffers[2];
 
     uint32_t            deviceLost;
+
+    uint8_t             latency;
+    int8_t              taskpri;
 };
 
 static struct SIDBlasterUSB* usb = NULL;
@@ -63,7 +66,7 @@ void kprintf(const char *format, ...)
   #define DPRINT
 #endif
 
-uint8_t sid_init()
+uint8_t sid_init(register uint8_t latency __asm("d0"), register int8_t taskpri __asm("d1"))
 {
     DPRINT("sid_init\n");
     if (usb) {
@@ -86,6 +89,9 @@ uint8_t sid_init()
         CloseLibrary(PsdBase);
         return FALSE;
     }
+
+    usb->latency = latency;
+    usb->taskpri = taskpri;
 
     usb->ctrlTask = FindTask(NULL);
     SetSignal(0, SIGF_SINGLE);
@@ -225,6 +231,8 @@ static void SIDTask()
             Signal(usb->ctrlTask, SIGF_SINGLE);
         }
         Permit();
+
+        SetTaskPri(currentTask, usb->taskpri);
 
         uint32_t signals;
         uint32_t sigMask = (1L << usb->msgPort->mp_SigBit) | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D;
@@ -386,7 +394,7 @@ static uint8_t AllocSID(struct SIDBlasterUSB* usb)
         psdPipeSetup(ep0pipe, URTF_IN|URTF_VENDOR, FTDI_GetLatTimer, 0x00, 0x00);
         psdDoPipe(ep0pipe, recvBuffer, 1);
 
-        psdPipeSetup(ep0pipe, URTF_VENDOR, FTDI_SetLatTimer, 0x10, 0x00);
+        psdPipeSetup(ep0pipe, URTF_VENDOR, FTDI_SetLatTimer, usb->latency, 0x00);
         psdDoPipe(ep0pipe, NULL, 0);
 
         psdPipeSetup(ep0pipe, URTF_IN|URTF_VENDOR, FTDI_GetLatTimer, 0x00, 0x00);
@@ -520,6 +528,7 @@ static void writePacket(uint8_t* packet, uint16_t length)
         if ((sizeof(buffer->data) - length) < buffer->pending)
         {
             // not enough space, retry
+            SysBase->SysFlags |= 0x8000; // trigger reschedule
             Enable();
             continue;
         }

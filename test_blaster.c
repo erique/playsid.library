@@ -8,7 +8,7 @@
 
 int main()
 {
-    if (!sid_init())
+    if (!sid_init(16, 0))
     {
         printf("sid init failed\n");
         return -1;

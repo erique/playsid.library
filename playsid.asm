@@ -4667,6 +4667,8 @@ write_sid_reg:
 start_sid_blaster:
     DPRINT  "start_sid_blaster"
 	movem.l	d1-a6,-(sp)
+	moveq.l	#$10,d0	; latency
+	moveq.l	#$5,d1	; taskpri
 	jsr	_sid_init
 	tst.l	d0
 	bne.b	.ok
