@@ -1,10 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <stdarg.h>
 #include <proto/exec.h>
 #include <proto/poseidon.h>
 #include <exec/alerts.h>
-#include <stdint.h>
-#include <stdarg.h>
+#include <utility/hooks.h>
 
 #include "sidblast.h"
 
@@ -46,7 +47,8 @@ static void SIDTask();
 static void writePacket(uint8_t* packet, uint16_t length);
 static uint8_t readResult();
 static uint32_t deviceUnplugged(register struct Hook *hook __asm("a0"), register APTR object __asm("a2"), register APTR message __asm("a1"));
-static const struct Hook hook = { .h_Entry = (HOOKFUNC)deviceUnplugged };
+typedef ULONG (*HOOKFUNC_ULONG)();  // NDK typedef HOOKFUNC with 'unsigned long'
+static const struct Hook hook = { .h_Entry = (HOOKFUNC_ULONG)deviceUnplugged };
 
 #ifdef DEBUG
 
