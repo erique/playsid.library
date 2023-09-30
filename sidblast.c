@@ -10,6 +10,12 @@
 
 #include "sidblast.h"
 
+#if 1 // NDEBUG
+#define kprintf(...) do {} while(0)
+#else
+int kprintf(const char* format, ...);
+#endif
+
 #define SysBase (*(struct ExecBase **) (4L))
 
 struct Buffer
@@ -51,36 +57,18 @@ static uint32_t deviceUnplugged(register struct Hook *hook __asm("a0"), register
 typedef ULONG (*HOOKFUNC_ULONG)();  // NDK typedef HOOKFUNC with 'unsigned long'
 static const struct Hook hook = { .h_Entry = (HOOKFUNC_ULONG)deviceUnplugged };
 
-#ifdef DEBUG
-
-  #define DPRINT kprintf
-void kprintf(const char *format, ...)
-{
-    va_list args;
-    static const uint16_t raw_put_char[5] = {0xcd4b, 0x4eae, 0xfdfc, 0xcd4b, 0x4e75};
-    va_start(args, format);
-
-    RawDoFmt((STRPTR) format, (APTR) args,
-             (void (*)()) raw_put_char, (APTR) SysBase);
-
-    va_end(args);
-}
-#else
-  #define DPRINT
-#endif
-
 uint8_t sid_init(register uint8_t latency __asm("d0"), register int8_t taskpri __asm("d1"))
 {
-    DPRINT("sid_init\n");
+    kprintf("sid_init\n");
     if (usb) {
-        DPRINT("usb != NULL\n");
+        kprintf("usb != NULL\n");
         return usb != NULL;
     }
 
     struct Library* PsdBase;
     if(!(PsdBase = OpenLibrary("poseidon.library", 1)))
     {   
-        DPRINT("poseidon open fail\n");
+        kprintf("poseidon open fail\n");
         return FALSE;
     }
 
@@ -88,7 +76,7 @@ uint8_t sid_init(register uint8_t latency __asm("d0"), register int8_t taskpri _
 
     if (!usb)
     {
-        DPRINT("psdAllocVec fail\n");
+        kprintf("psdAllocVec fail\n");
         CloseLibrary(PsdBase);
         return FALSE;
     }
@@ -102,7 +90,7 @@ uint8_t sid_init(register uint8_t latency __asm("d0"), register int8_t taskpri _
     {
         Wait(SIGF_SINGLE);
     } else {
-        DPRINT("psdSpawnSubTask fail\n");
+        kprintf("psdSpawnSubTask fail\n");
     }
     usb->ctrlTask = NULL;
 
@@ -112,7 +100,7 @@ uint8_t sid_init(register uint8_t latency __asm("d0"), register int8_t taskpri _
     }
     else
     {
-        DPRINT("failed to acquire hw\n"); 
+        kprintf("failed to acquire hw\n"); 
         psdAddErrorMsg(RETURN_ERROR, "SIDBlasterUSB", "Failed to acquire ancient hardware!");
         sid_exit();
     }
@@ -120,21 +108,21 @@ uint8_t sid_init(register uint8_t latency __asm("d0"), register int8_t taskpri _
     CloseLibrary(PsdBase);
     PsdBase = NULL;
         
-    DPRINT("return %ld\n", (int)(usb != NULL)); 
+    kprintf("return %ld\n", (int)(usb != NULL)); 
     return usb != NULL;
 }
 
 void sid_exit()
 {
-    DPRINT("sid_exit\n");
+    kprintf("sid_exit\n");
     if (!usb) {
-       DPRINT("!usb\n");
+       kprintf("!usb\n");
        return;
     }
         
     if(usb->mainTask)
     {
-        DPRINT("reset SID\n");
+        kprintf("reset SID\n");
         // reset SID output
         sid_write_reg(0x00, 0x00);  // freq voice 1
         sid_write_reg(0x01, 0x00);
@@ -147,7 +135,7 @@ void sid_exit()
     struct Library* PsdBase;
     if((PsdBase = OpenLibrary("poseidon.library", 1)))
     {
-        DPRINT("stop tasks\n");
+        kprintf("stop tasks\n");
         usb->ctrlTask = FindTask(NULL);
 
         Forbid();
@@ -215,19 +203,19 @@ static void FreeSID(struct SIDBlasterUSB* usb);
 
 static void SIDTask()
 {
-    DPRINT("SIDTask\n"); 
+    kprintf("SIDTask\n"); 
 
     struct Task* currentTask = FindTask(NULL);
     struct SIDBlasterUSB* usb = currentTask->tc_UserData;
 
     if(!(PsdBase = OpenLibrary("poseidon.library", 1)))
     {
-        DPRINT("OpenLibrary fail\n"); 
+        kprintf("OpenLibrary fail\n"); 
         Alert(AG_OpenLib);
     }
     else if (AllocSID(usb))
     {
-        DPRINT("AllocSID OK\n"); 
+        kprintf("AllocSID OK\n"); 
 
         usb->mainTask = currentTask;
 
@@ -314,11 +302,11 @@ static void SIDTask()
 
 static uint8_t AllocSID(struct SIDBlasterUSB* usb)
 {
-    DPRINT("AllocSID\n"); 
+    kprintf("AllocSID\n"); 
 
     // Find SIDBlasterUSB
     {
-        DPRINT("psdLocReadPBase\n"); 
+        kprintf("psdLocReadPBase\n"); 
         psdLockReadPBase();
 
         APTR pab = NULL;
@@ -331,7 +319,7 @@ static uint8_t AllocSID(struct SIDBlasterUSB* usb)
                                 DA_Binding, (ULONG)NULL,
                                 TAG_END))
         {
-            DPRINT("psdFindDevice pd=%lx\n", (int)pd); 
+            kprintf("psdFindDevice pd=%lx\n", (int)pd); 
             psdLockReadDevice(pd);
 
             const char* product;
@@ -340,16 +328,16 @@ static uint8_t AllocSID(struct SIDBlasterUSB* usb)
                         TAG_END);
 
             if (product) {
-                DPRINT("product=%s\n", product);
+                kprintf("product=%s\n", product);
             } else {
-                DPRINT("product=NULL\n"); 
+                kprintf("product=NULL\n"); 
             }
                 
             pab = psdClaimAppBinding(ABA_Device, (ULONG)pd,
                                 ABA_ReleaseHook, (ULONG)&hook,
                                 ABA_UserData, (ULONG)usb);
 
-            DPRINT("psdClaimAppBinding pab=%lx\n", (int)pab); 
+            kprintf("psdClaimAppBinding pab=%lx\n", (int)pab); 
 
             psdUnlockDevice(pd);
 
@@ -360,7 +348,7 @@ static uint8_t AllocSID(struct SIDBlasterUSB* usb)
         psdUnlockPBase();
 
         if (!pd) {
-            DPRINT("!pd, return FALSE\n"); 
+            kprintf("!pd, return FALSE\n"); 
             return FALSE;
         }
 
@@ -580,3 +568,39 @@ static uint8_t readResult()
         return result;
     }
 }
+
+
+/*-------------------------------------------------------*/
+
+#ifndef kprintf
+
+#define RawPutChar(___ch) \
+    LP1NR(516, RawPutChar , BYTE, ___ch, d0,\
+          , EXEC_BASE_NAME)
+
+static void raw_put_char(uint32_t c __asm("d0"))
+{
+    RawPutChar(c);
+}
+
+int kvprintf(const char* format, va_list ap)
+{
+//    __asm volatile("move.w #3546895/115200,0xdff032": : : "cc", "memory");
+
+    RawDoFmt((STRPTR)format, ap, (__fpt)raw_put_char, NULL);
+    return 0;
+}
+
+int kprintf(const char* format, ...)
+{
+    if (format == NULL)
+        return 0;
+
+    va_list arg;
+    va_start(arg, format);
+    int ret = kvprintf(format, arg);
+    va_end(arg);
+    return ret;
+}
+
+#endif
