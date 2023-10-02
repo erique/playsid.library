@@ -512,6 +512,25 @@ static uint32_t deviceUnplugged(register struct Hook *hook __asm("a0"), register
     return 0;
 }
 
+#define DISABLE(execbase)                           \
+    do {                                            \
+        __asm volatile(                             \
+            "MOVE.W  #0x4000,0xdff09a   \n"         \
+            "ADDQ.B  #1,0x126(%0)       \n"         \
+            : : "a"(execbase) : "cc", "memory");    \
+    } while(0)
+
+#define ENABLE(execbase)                            \
+    do {                                            \
+        __asm volatile(                             \
+            "SUBQ.B  #1,0x126(%0)       \n"         \
+            "BGE.S   ENABLE%=           \n"         \
+            "MOVE.W  #0xc000,0xdff09a   \n"         \
+            "ENABLE%=:                  \n"         \
+            : : "a"(execbase) : "cc", "memory");    \
+    } while(0)
+
+
 static bool writePacket(uint8_t* packet, uint16_t length)
 {
     while(TRUE)
@@ -526,19 +545,21 @@ static bool writePacket(uint8_t* packet, uint16_t length)
             return false;
         }
 
-        Disable();
+        DISABLE(SysBase);
+
         if (bufNum != usb->outBufferNum)
         {
             // the buffer changed - retry
-            Enable();
+            ENABLE(SysBase);
             continue;
         }
 
         uint8_t* dest = &buffer->data[buffer->pending];
-        CopyMem(packet, dest, length);
+        for (int16_t i = length-1; i >= 0; --i)
+            *dest++ =  *packet++;
         buffer->pending += length;
 
-        Enable();
+        ENABLE(SysBase);
         break;
     }
     return true;
