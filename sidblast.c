@@ -4,9 +4,11 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <proto/exec.h>
-#include <proto/poseidon.h>
 #include <exec/alerts.h>
+#include <exec/execbase.h>
 #include <utility/hooks.h>
+#include <inline/poseidon.h>
+#include <libraries/poseidon.h>
 
 #include "sidblast.h"
 
@@ -43,6 +45,9 @@ struct SIDBlasterUSB
     struct Buffer       outBuffers[2];
 
     uint32_t            deviceLost;
+
+    uint16_t            pendingRecorded;
+    uint8_t             dataRecorded[256];
 
     uint8_t             latency;
     int8_t              taskpri;
@@ -81,6 +86,8 @@ uint8_t sid_init(register uint8_t latency __asm("d0"), register int8_t taskpri _
         return FALSE;
     }
 
+    usb->psdLibrary = PsdBase;
+
     usb->latency = latency;
     usb->taskpri = taskpri;
 
@@ -105,9 +112,6 @@ uint8_t sid_init(register uint8_t latency __asm("d0"), register int8_t taskpri _
         sid_exit();
     }
 
-    CloseLibrary(PsdBase);
-    PsdBase = NULL;
-        
     kprintf("return %ld\n", (int)(usb != NULL)); 
     return usb != NULL;
 }
@@ -132,8 +136,7 @@ void sid_exit()
         sid_write_reg(0x0f, 0x00);
     }
 
-    struct Library* PsdBase;
-    if((PsdBase = OpenLibrary("poseidon.library", 1)))
+    struct Library* PsdBase = usb->psdLibrary;
     {
         kprintf("stop tasks\n");
         usb->ctrlTask = FindTask(NULL);
@@ -192,6 +195,34 @@ void sid_write_reg(register uint8_t reg __asm("d0"), register uint8_t value __as
     Signal(usb->mainTask, SIGBREAKF_CTRL_D);
 }
 
+void sid_write_reg_record(register uint8_t reg __asm("d0"), register uint8_t value __asm("d1"))
+{
+    if (!usb)
+        return;
+
+    if (usb->pendingRecorded > sizeof(usb->dataRecorded) - 2)
+        return;
+
+    uint8_t* p = &usb->dataRecorded[usb->pendingRecorded];
+    *p++ = 0xe0 + reg;
+    *p++ = value;
+
+    usb->pendingRecorded += 2;
+}
+
+void sid_write_reg_playback()
+{
+    if (!(usb && !usb->deviceLost))
+        return;
+
+    if (!usb->pendingRecorded)
+        return;
+
+    writePacket(usb->dataRecorded, usb->pendingRecorded);
+    Signal(usb->mainTask, SIGBREAKF_CTRL_D);
+    usb->pendingRecorded = 0;
+}
+
 
 /*-------------------------------------------------------*/
 
@@ -208,12 +239,7 @@ static void SIDTask()
     struct Task* currentTask = FindTask(NULL);
     struct SIDBlasterUSB* usb = currentTask->tc_UserData;
 
-    if(!(PsdBase = OpenLibrary("poseidon.library", 1)))
-    {
-        kprintf("OpenLibrary fail\n"); 
-        Alert(AG_OpenLib);
-    }
-    else if (AllocSID(usb))
+    if (AllocSID(usb))
     {
         kprintf("AllocSID OK\n"); 
 
@@ -228,34 +254,67 @@ static void SIDTask()
 
         SetTaskPri(currentTask, usb->taskpri);
 
-        uint32_t signals;
-        uint32_t sigMask = (1L << usb->msgPort->mp_SigBit) | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D;
+        uint32_t sigMask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D;
 
-        uint8_t result[3];
-        psdSendPipe(usb->inPipe, result, sizeof(result));
+        uint32_t signals = 0;
+
         do
         {
             signals = Wait(sigMask);
 
-            struct PsdPipe* pipe;
-            while((pipe = (struct PsdPipe *) GetMsg(usb->msgPort)))
-            {  
-                if (pipe != usb->inPipe)
-                    continue;
+            if (signals & SIGBREAKF_CTRL_D)
+            {
+                Disable();
+                struct Buffer* buffer = &usb->outBuffers[usb->outBufferNum];
+                usb->outBufferNum ^= 1;
+                usb->outBuffers[usb->outBufferNum].pending = 0;
+                Enable();
 
-                uint32_t ioerr;
-                if((ioerr = psdGetPipeError(pipe)))
+                if (buffer->pending)
                 {
-                    if (usb->deviceLost)
-                        break;
-                    psdDelayMS(20);
-                }
-                else
-                {
-                    uint32_t actual = psdGetPipeActual(pipe);
-                    if (actual > 2)
+                    uint8_t* p = buffer->data;
+                    kprintf("TX : ", buffer->pending);
+                    for (int16_t i = buffer->pending-1; i >= 0; --i)
+                        kprintf("%02lx, ", *p++);
+                    kprintf("\n");
+
+                    // odd number of bytes means there is read request (at the end).
+                    const bool regRead = buffer->pending & 0x1;
+
+                    int16_t ret = -1;
+
+                    uint8_t result[3];
+                    if (regRead)
+                        psdSendPipe(usb->inPipe, result, sizeof(result));
+
+                    psdDoPipe(usb->outPipe, buffer->data, buffer->pending);
+
+                    if (regRead)
                     {
-                        uint8_t res = result[2];
+                        do
+                        {
+                            uint32_t ioerr = psdWaitPipe(usb->inPipe);
+                            uint32_t actual = psdGetPipeActual(usb->inPipe);
+
+                            if(ioerr)
+                            {
+                                kprintf("psdSendPipe(IN) failed! ioerr = %08lx ; actual = %ld\n", ioerr, actual);
+                            }
+                            else
+                            {
+                                if (actual > 2)
+                                {
+                                    ret = result[2];
+                                    kprintf("RX : %02lx\n", ret);
+                                    break;
+                                }
+                            }
+                            // try again
+                            psdSendPipe(usb->inPipe, result, sizeof(result));
+                        }
+                        while(ret < 0);
+
+                        uint8_t res = (uint8_t)(ret & 0xff);
 
                         Disable();
                         struct Buffer* buffer = &usb->inBuffers[usb->inBufferNum];
@@ -271,23 +330,13 @@ static void SIDTask()
                         Enable();
                     }
                 }
-
-                psdSendPipe(usb->inPipe, result, sizeof(result));
             }
-
-            if (signals & SIGBREAKF_CTRL_D)
-            {
-                Disable();
-                struct Buffer* buffer = &usb->outBuffers[usb->outBufferNum];
-                usb->outBufferNum ^= 1;
-                usb->outBuffers[usb->outBufferNum].pending = 0;
-                Enable();
-
-                if (buffer->pending)
-                    psdDoPipe(usb->outPipe, buffer->data, buffer->pending);
-            }
-
         } while(!(signals & SIGBREAKF_CTRL_C));
+        kprintf("SIGBREAKF_CTRL_C received! We're done..\n");
+    }
+    else
+    {
+        kprintf("SID not found!\n");
     }
 
     FreeSID(usb);
@@ -482,12 +531,6 @@ static void FreeSID(struct SIDBlasterUSB* usb)
                     TAG_END);
         psdReleaseAppBinding(appBinding);
         usb->device = NULL;
-    }
-
-    if (usb->psdLibrary)
-    {
-        CloseLibrary(usb->psdLibrary);
-        usb->psdLibrary = NULL;
     }
 }
 

@@ -136,7 +136,7 @@ SPRINT  macro
 		xref	_custom,_ciaa,_ciab
 		xref	@AllocEmulAudio,@FreeEmulAudio,@ReadIcon
 
-		xref	_sid_init,_sid_exit,_sid_write_reg
+		xref	_sid_init,_sid_exit,_sid_write_reg_record,_sid_write_reg_playback
 
                 xdef    _PlaySidBase
 *=======================================================================*
@@ -967,6 +967,10 @@ Play64:
 		bsr	    ReadDisplayData
 		bsr	    DisplayRequest
 .1
+        cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
+        bne.b	.2
+		bsr	flush_sid_regs
+.2
 		bsr	CalcTime
 		bsr	CheckC64TimerA
 
@@ -4652,18 +4656,6 @@ writeSID2Register:
 
 *-----------------------------------------------------------------------*
 
-
-write_sid_reg:
-	movem.l	d0-a6,-(sp)
-	and.l	#$ff,d7
-	and.l	#$ff,d6
-	move.l	d7,d0
-	move.l	d6,d1
-	jsr	_sid_write_reg
-    moveq   #1,d0
-	movem.l	(sp)+,d0-a6
-	rts
-
 start_sid_blaster:
     DPRINT  "start_sid_blaster"
 	movem.l	d1-a6,-(sp)
@@ -4683,6 +4675,22 @@ stop_sid_blaster:
     DPRINT  "stop_sid_blaster"
 	movem.l	d0-a6,-(sp)
 	jsr	_sid_exit
+	movem.l	(sp)+,d0-a6
+	rts
+
+write_sid_reg:
+	movem.l	d0-a6,-(sp)
+	and.l	#$ff,d7
+	and.l	#$ff,d6
+	move.l	d7,d0
+	move.l	d6,d1
+	jsr	_sid_write_reg_record
+	movem.l	(sp)+,d0-a6
+	rts
+
+flush_sid_regs:
+	movem.l	d0-a6,-(sp)		; paranoia
+	jsr	_sid_write_reg_playback
 	movem.l	(sp)+,d0-a6
 	rts
 
