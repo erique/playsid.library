@@ -31,10 +31,30 @@ DAT_002273d0
      lea        ($7,sp),a1
      move.b     (a0)+,(a1)+
      movea.l    ($4).w,a6
-     jsr        (-$29a,a6)              ; _LVOCreateMsgPort
+
+;     jsr        (-$29a,a6)             ; _LVOCreateMsgPort
+
+        moveq   #MP_SIZE,d0
+        move.l  #MEMF_PUBLIC!MEMF_CLEAR,d1
+        jsr     _LVOAllocMem(a6)
+
      movea.l    (_PlaySidBase).l,a0
      move.l     d0,($16c,a0)            ; psb_AudioMP
-     beq.b      LAB_0022755c
+     beq        LAB_0022755c
+
+        moveq   #-1,d0
+        jsr     _LVOAllocSignal(a6)
+        movea.l (_PlaySidBase).l,a0
+        move.l  psb_AudioMP(a0),a0
+        move.b  d0,MP_SIGBIT(a0)
+        beq.b   LAB_0022755c
+
+        move.b  #NT_MSGPORT,LN_TYPE(a0)
+        move.b  #PA_SIGNAL,MP_FLAGS(a0)
+        move.l  ThisTask(a6),MP_SIGTASK(a0)
+        lea.l   MP_MSGLIST(a0),a0
+        NEWLIST a0
+
      moveq      #$44,d0                 ; ioa_SIZEOF
      move.l     #$10001,d1              ; MEMF_PUBLIC!MEMF_CLEAR
      jsr        (-$c6,a6)               ; _LVOAllocMem
@@ -99,9 +119,20 @@ LAB_002275c0
     movea.l    (_PlaySidBase).l,a0
     move.l     ($16c,a0),d0             ; psb_AudioMP
     beq.b      LAB_002275e0
-    movea.l    d0,a0
+    movea.l    d0,a1
     movea.l    ($4).w,a6
-    jsr        (-$2a0,a6)               ; _LVODeleteMsgPort
+
+;    jsr        (-$2a0,a6)              ; _LVODeleteMsgPort
+
+        move.b  MP_SIGBIT(a1),-(sp)
+        moveq.l #MP_SIZE,d0
+        jsr     _LVOFreeMem(a6)
+        moveq   #0,d0
+        move.b  (sp)+,d0
+        beq.b   .nosignal
+        jsr     _LVOFreeSignal(a6)
+.nosignal
+
     movea.l    (_PlaySidBase).l,a0
     clr.l      ($16c,a0)                ; psb_AudioMP
 LAB_002275e0
