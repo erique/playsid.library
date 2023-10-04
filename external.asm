@@ -1,4 +1,4 @@
-	section EXTDATA,data_p
+	section .data,data_p
 
 DAT_002273d4
 	dc.b	$00,$20,$20,$20,$20,$20,$20,$20,$20,$20,$28,$28,$28,$28,$28,$20
@@ -22,7 +22,7 @@ DAT_002273d4
 DAT_002273d0
 	dc.l $00000000
 
-	section EXTCODE,code_p
+	section .text,code_p
 
 @AllocEmulAudio_impl
      subq.w     #$4,sp

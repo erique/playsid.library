@@ -144,7 +144,7 @@ SPRINT  macro
 *	CODE SECTION							*
 *									*
 *=======================================================================*
-		section	EmulSID_library,CODE
+		section	.text,CODE
 *-----------------------------------------------------------------------*
 
 *=======================================================================*
@@ -5446,7 +5446,7 @@ EndOfLibrary
 *	DATA SECTION							*
 *                                                                       *
 *=======================================================================*
-	Section	DATA,data
+	Section	.data,data
 *-----------------------------------------------------------------------*
 
 *=======================================================================*
@@ -7938,7 +7938,7 @@ IEND
 *	BSS SECTION							*
 *									*
 *=======================================================================*
-	section	BSS,bss
+	section	.bss,bss
 *-----------------------------------------------------------------------*
 VolumeTable	ds.l	($1000)/4
 Enve1		ds.l	(env_SIZEOF+3)/4
@@ -7972,7 +7972,7 @@ residData2     ds.b    resid_SIZEOF
 *
 *-----------------------------------------------------------------------*
 
-        section    reSID1,code
+        section    .text,code
 
   ifd __VASM
     ; Turn on optimization for reSID
@@ -7984,7 +7984,7 @@ residData2     ds.b    resid_SIZEOF
 
         include resid-68k.s
 
-        section    reSID2,code
+        section    .text,code
 
 
 @SetVolume 
@@ -9510,7 +9510,7 @@ plainSaveFile:
 	rts
   endif
 
-    section bss1,bss
+    section .bss,bss
 
 workerTaskStack     ds.b    4096
 workerTaskStruct    ds.b    TC_SIZE

@@ -5,6 +5,7 @@ VASM_FLAGS := -Fhunk -kick1hunks -quiet -m68060 -nosym -showcrit -I $(VBCC)/m68k
 
 GCC ?= $(VBCC)/bin/m68k-amigaos-gcc
 STRIP ?= $(VBCC)/bin/m68k-amigaos-strip
+OBJCOPY ?= $(VBCC)/bin/m68k-amigaos-objcopy
 
 CFLAGS := -O2 -g -noixemul -m68020 -mregparm=4 -fomit-frame-pointer -DPLAYSID
 
@@ -23,6 +24,7 @@ clean:
 
 playsid.o: playsid.asm playsid_libdefs.i external.asm Makefile
 	$(VASM) $< -o $@ -L $(LISTFILE) $(VASM_FLAGS) -Iresid-68k
+	$(OBJCOPY) --rename-section reSID_data=.data $@
 
 sidblast.o: sidblast.c Makefile
 	$(GCC) -c $< -o $@ $(CFLAGS)
