@@ -70,7 +70,8 @@ int main(int argc, const char** argv)
     GetSysTime(&startTime);
 
     for (int i = 0x00; i <= 0x18; ++i)
-        sid_write_reg(i, 0x00);
+        sid_write_reg_record(i, 0x00);
+    sid_write_reg_playback();
 
     // voice 1
     sid_write_reg(0x00, 0x04);      // freq lo
@@ -105,9 +106,10 @@ int main(int argc, const char** argv)
     printf("sweeping...\n"); fflush(stdout);
 
     // gate 1+2+3
-    sid_write_reg(0x04, 0x41);      // square | gate
-    sid_write_reg(0x04+7, 0x41);    // square | gate
-    sid_write_reg(0x04+7*2, 0x11);  // triang | gate
+    sid_write_reg_record(0x04, 0x41);      // square | gate
+    sid_write_reg_record(0x04+7, 0x41);    // square | gate
+    sid_write_reg_record(0x04+7*2, 0x11);  // triang | gate
+    sid_write_reg_playback();
 
     while(1)
     {
@@ -124,11 +126,13 @@ int main(int argc, const char** argv)
         // read voice 3 oscillator and use it to sweep the filter cut-off
         uint8_t voice3osc = sid_read_reg(0x1b);
 
+        printf("voice3osc %2x", voice3osc);
+
         uint8_t cutoff_lo = voice3osc & 0xf;
         uint8_t cutoff_hi = voice3osc >> 3;
 
-        sid_write_reg(0x15, cutoff_lo);
-        sid_write_reg(0x16, cutoff_hi);
+        sid_write_reg_record(0x15, cutoff_lo);
+        sid_write_reg_record(0x16, cutoff_hi);
 
         // use time as input to the pulse width phasing
         uint16_t phase = (currentTime.tv_secs << 8) | (currentTime.tv_micro >> 12);
@@ -136,22 +140,25 @@ int main(int argc, const char** argv)
         uint8_t phase_lo = phase & 0xff;
         uint8_t phase_hi = phase >> 8;
 
-        sid_write_reg(0x02, phase_lo);
-        sid_write_reg(0x03, phase_hi);
+        sid_write_reg_record(0x02, phase_lo);
+        sid_write_reg_record(0x03, phase_hi);
 
         phase += 0xff;        // offset voice 1 phase slightly
         phase_lo = phase & 0xff;
         phase_hi = phase >> 8;
 
-        sid_write_reg(0x02+7, phase_lo);
-        sid_write_reg(0x03+7, phase_hi);
+        sid_write_reg_record(0x02+7, phase_lo);
+        sid_write_reg_record(0x03+7, phase_hi);
+
+        sid_write_reg_playback();
 
         printf("\n"); fflush(stdout);
     }
 
     // reset all registers
     for (int i = 0x00; i <= 0x18; ++i)
-        sid_write_reg(i, 0x00);
+        sid_write_reg_record(i, 0x00);
+    sid_write_reg_playback();
 
     CloseLibrary(PsdBase);
 
