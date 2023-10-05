@@ -1,0 +1,26 @@
+name: PlaySID CI
+
+on:
+  push:
+  pull_request:
+    branches: [ "master" ]
+
+  workflow_dispatch:
+
+  schedule:
+    - cron: '* * 1/7 * *'
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    container: trixitron/m68k-amigaos-gcc
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Clean
+      run: make clean
+
+    - name: Build
+      run: make

@@ -13,7 +13,7 @@ LISTFILE := playsid.txt
 all: $(TARGET)
 
 clean:
-	rm $(TARGET) $(LISTFILE)
+	rm -f $(TARGET) $(LISTFILE)
 
 $(TARGET) : $(SOURCE) $(INCLUDES) Makefile
 	$(VASM) $< -o $@ -L $(LISTFILE) $(VASM_FLAGS)
