@@ -1,12 +1,14 @@
-name: Makefile CI
+name: PlaySID CI
 
 on:
   push:
-    branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
 
   workflow_dispatch:
+
+  schedule:
+    - cron: '* * 1/7 * *'
 
 jobs:
   build:
