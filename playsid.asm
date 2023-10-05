@@ -32,6 +32,8 @@
 		xref	_custom,_ciaa,_ciab
 		xref	@AllocEmulAudio,@FreeEmulAudio,@ReadIcon
 
+		xref	_sid_init,_sid_exit,_sid_write_reg
+
                 xdef    _PlaySidBase
 *=======================================================================*
 *									*
@@ -219,7 +221,10 @@ AutoInitFunction
 		beq.s	.LibOK
 		moveq	#SID_LIBINUSE,d0
 		bra.s	.Exit
-.LibOK		bsr	AllocEmulMem
+.LibOK		bsr	start_sid_blaster
+		tst.l	d0
+		bne.s	.Exit
+		bsr	AllocEmulMem
 		tst.l	d0
 		bne.s	.Exit
 .MemOK		bsr	CheckCPU
@@ -243,6 +248,7 @@ AutoInitFunction
 		beq.s	.Exit
 		bsr	@StopSong
 		bsr	FreeEmulMem
+		bsr	stop_sid_blaster
 		clr.w	psb_EmulResourceFlag(a6)
 .Exit		movem.l	(a7)+,d2-d7/a2-a6
 		;CALLEXEC Permit
@@ -3631,22 +3637,27 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 .D400						;80
 	move.w	#$D400,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	Next_Inst
 .D401
 	move.w	#$D401,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	Next_Inst
 .D402
 	move.w	#$D402,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	Next_Inst
 .D403
 	move.w	#$D403,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	Next_Inst
 .D404
 	move.w	#$D404,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	move.l	a6,-(a7)
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve1(a6),a2
@@ -3674,6 +3685,7 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 .D405
 	move.w	#$D405,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	move.l	a6,d7
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve1(a6),a2
@@ -3689,6 +3701,7 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 .D406
 	move.w	#$D406,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	move.l	a6,d7
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve1(a6),a2
@@ -3704,22 +3717,27 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 .D407
 	move.w	#$D407,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	Next_Inst
 .D408
 	move.w	#$D408,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	Next_Inst
 .D409
 	move.w	#$D409,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	Next_Inst
 .D40A
 	move.w	#$D40A,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	Next_Inst
 .D40B
 	move.w	#$D40B,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	move.l	a6,-(a7)
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve2(a6),a2
@@ -3747,6 +3765,7 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 .D40C
 	move.w	#$D40C,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	move.l	a6,d7
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve2(a6),a2
@@ -3762,6 +3781,7 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 .D40D
 	move.w	#$D40D,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	move.l	a6,d7
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve2(a6),a2
@@ -3777,22 +3797,27 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 .D40E
 	move.w	#$D40E,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	Next_Inst
 .D40F
 	move.w	#$D40F,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	Next_Inst
 .D410
 	move.w	#$D410,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	Next_Inst
 .D411
 	move.w	#$D411,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	Next_Inst
 .D412
 	move.w	#$D412,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	move.l	a6,-(a7)
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve3(a6),a2
@@ -3820,6 +3845,7 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 .D413
 	move.w	#$D413,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	move.l	a6,d7
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve3(a6),a2
@@ -3835,6 +3861,7 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 .D414
 	move.w	#$D414,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	move.l	a6,d7
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve3(a6),a2
@@ -3850,18 +3877,22 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 .D415
 	move.w	#$D415,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	Next_Inst
 .D416
 	move.w	#$D416,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	Next_Inst
 .D417
 	move.w	#$D417,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	Next_Inst
 .D418
 	move.w	#$D418,d7
 	move.b	d6,0(a0,d7.l)
+	bsr	write_sid_reg
 	move.l	a6,d7
 	move.l	_PlaySidBase,a6
 	move.l	psb_Chan4(a6),a2
@@ -3875,6 +3906,56 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	Next_Inst
 
 *-----------------------------------------------------------------------*
+
+start_sid_blaster:
+	movem.l	d1-a6,-(sp)
+	jsr	_sid_init
+	tst.l	d0
+	bne.b	.ok
+	moveq.l	#SID_LIBINUSE,d0
+	bra.b	.fail
+.ok	clr.l	d0
+.fail	movem.l	(sp)+,d1-a6
+	rts
+
+stop_sid_blaster:
+	movem.l	d0-a6,-(sp)
+	jsr	_sid_exit
+	movem.l	(sp)+,d0-a6
+	rts
+
+write_sid_reg:
+	movem.l	d0-a6,-(sp)
+	and.l	#$ff,d7
+	and.l	#$ff,d6
+	move.l	d7,d0
+	move.l	d6,d1
+	jsr	_sid_write_reg
+	movem.l	(sp)+,d0-a6
+	rts
+
+mute_sid:
+	movem.l	d0-a6,-(sp)
+        moveq.l	#$00,d0 
+        moveq.l	#$00,d1
+        jsr	_sid_write_reg
+        moveq.l	#$01,d0 
+        moveq.l	#$00,d1
+        jsr	_sid_write_reg
+        moveq.l	#$07,d0 
+        moveq.l	#$00,d1
+        jsr	_sid_write_reg
+        moveq.l	#$08,d0 
+        moveq.l	#$00,d1
+        jsr	_sid_write_reg
+        moveq.l	#$0e,d0 
+        moveq.l	#$00,d1
+        jsr	_sid_write_reg
+        moveq.l	#$0f,d0 
+        moveq.l	#$00,d1
+        jsr	_sid_write_reg
+	movem.l	(sp)+,d0-a6
+	rts
 
 *=======================================================================*
 *	INTERRUPT HANDLING ROUTINES					*
@@ -4077,6 +4158,7 @@ PlayDisable					;Turns off all Audio
 		move.w	d0,AUD1VOL(a0)
 		move.w	d0,AUD2VOL(a0)
 		move.w	d0,AUD3VOL(a0)
+		bsr	mute_sid
 		rts
 
 *-----------------------------------------------------------------------*
