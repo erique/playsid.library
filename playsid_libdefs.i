@@ -342,9 +342,11 @@ CAI_NONE	equ	$FF	;
 	UWORD	ch4_SamPer
 	UWORD	ch4_SamRepLen
 	UWORD	ch4_SamVol
+	UWORD   ch4_SamVolMultiplier
 	UBYTE	ch4_Repeat
 	UBYTE	ch4_Mode
 	UBYTE	ch4_Active
+    UBYTE   ch4_WasActive
 	UBYTE	ch4_Counter
 	UBYTE	ch4_AverageVol
 	LABEL	ch4_SIZEOF

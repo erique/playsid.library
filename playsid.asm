@@ -76,6 +76,9 @@ DEBUG = 0
 SERIALDEBUG = 0
 COUNTERS = 0
 
+* When playing samples with reSID scale ch4 volume with this factor
+* to get it to reSID levels
+CH4_RESID_VOLSCALE = $10
 
 * Macro to print to debug console
 DPRINT  macro
@@ -550,13 +553,24 @@ GetEnvDebugFlag:
     	move.w	d1,psb_ResidMode(a6)
 		rts
 
-
 @GetOperatingMode
         moveq   #0,d0
     	move.w	psb_OperatingMode(a6),d0
         moveq   #0,d1
     	move.w	psb_ResidMode(a6),d1
 		rts
+
+* Returns true is reSID operating mode is active
+residActive:
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .2
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        beq.b   .2
+        moveq   #0,d0
+        rts
+.2      moveq   #1,d0
+        rts
+
 
 @SetAHIMode
         DPRINT  "SetAHIMode=%lx"
@@ -1337,6 +1351,7 @@ InitSID
 		move.w	#-1,ch_SamPer(a0)
 		move.w	#4,ch_SamLen(a0)
 
+        bsr     SetCh4VolMultiplier
         cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
         beq.b   .2
         cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
@@ -1353,7 +1368,21 @@ InitSID
         
         ;; Missing RTS added
         rts
-       
+
+SetCh4VolMultiplier:
+		move.l	psb_Chan4(a6),a0
+        move.w  #$40,ch4_SamVolMultiplier(a0)   * No scaling
+
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .2
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        bne.b   .1
+.2
+        move.w  #CH4_RESID_VOLSCALE,ch4_SamVolMultiplier(a0)
+.1
+        rts
+
+   
 *-----------------------------------------------------------------------*
 InitSIDCont	move.l	psb_Chan1(a6),a0
 		move.w	#ch_SIZEOF,d0
@@ -1377,6 +1406,8 @@ InitSIDCont	move.l	psb_Chan1(a6),a0
 		move.l	psb_Chan3(a6),a0
 		move.w	#-1,ch_SamPer(a0)
 		move.w	#4,ch_SamLen(a0)
+
+        bsr     SetCh4VolMultiplier
 
 		rts
 .Clear
@@ -1491,7 +1522,7 @@ StopRemember
 		clr.l	psb_PlayBackPars(a6)
 .3		move.w	#RM_NONE,psb_RememberMode(a6)
 		rts
-
+ 
 AllocNewRemBlock
 		move.l	a4,-(a7)
 		move.l	psb_SoundRemPars(a6),a4
@@ -2379,6 +2410,33 @@ SetChanProg
 		rts
 
 *-----------------------------------------------------------------------*
+
+SetCh4Vol: 
+    move.l  d0,-(sp)
+    move.w  ch4_SamVolMultiplier(a1),d0
+
+    cmp.w   #$40,d0
+    beq.b   .1
+
+    mulu.w  ch4_SamVol(a1),d0
+    lsr.w   #6,d0
+    
+    * Main volume
+    mulu.w  psb_Volume(a6),d0
+    lsr.w   #6,d0
+    move.w  d0,AUD3VOL(a0)
+    move.l  (sp)+,d0
+    rts
+
+.1
+    * Main volume
+    move.w  ch4_SamVol(a1),d0
+    mulu.w  psb_Volume(a6),d0
+    lsr.w   #6,d0
+    move.w  d0,AUD3VOL(a0)
+    move.l  (sp)+,d0
+    rts
+
 CreateFour
 		move.l	psb_Chan4(a6),a1
 		lea	psb_ChannelEnable(a6),a0
@@ -4727,8 +4785,20 @@ OpenIRQ
 		move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTREQ(a0)
 .o1
 		tst.w	psb_IntVecAudFlag(a6)
-		bne.s	.1
+		bne 	.1
 
+        clr.l   psb_OldIntVecAud0(a6)
+        clr.l   psb_OldIntVecAud1(a6)
+        clr.l   psb_OldIntVecAud2(a6)
+        clr.l   psb_OldIntVecAud3(a6)
+
+        * For sample playback with reSID get one of the audio interrupts,
+        * if not using AHI
+        cmp.w   #REM_AHI,psb_ResidMode(a5)
+        beq     .ah
+        bsr     residActive
+        bne     .getAud3
+.ah
         * Skip lev4 unless normal mode
         tst.w   psb_OperatingMode(a6)
         bne     .1
@@ -4738,19 +4808,22 @@ OpenIRQ
 	    move.l	a6,-(a7)
 	    CALLEXEC	SetIntVector
 	    move.l	(a7)+,a6
-	    move.l	d0,psb_OldIntVecAud0(a6)
+        move.l	d0,psb_OldIntVecAud0(a6)
+
         moveq	#INTB_AUD1,d0
 	    lea	level4Intr2,a1
 	    move.l	a6,-(a7)
 	    CALLEXEC	SetIntVector
 	    move.l	(a7)+,a6
-	    move.l	d0,psb_OldIntVecAud1(a6)
+	    
+        move.l	d0,psb_OldIntVecAud1(a6)
         moveq	#INTB_AUD2,d0
 	    lea	level4Intr3,a1
 	    move.l	a6,-(a7)
 	    CALLEXEC	SetIntVector
 	    move.l	(a7)+,a6
 	    move.l	d0,psb_OldIntVecAud2(a6)
+.getAud3
         moveq	#INTB_AUD3,d0
 	    lea	level4Intr4,a1
 	    move.l	a6,-(a7)
@@ -4841,26 +4914,38 @@ CloseIRQ	tst.w	psb_TimerBFlag(a6)
 		tst.w	psb_IntVecAudFlag(a6)
 		beq.s	.3
 		moveq	#INTB_AUD3,d0	; Deallocate Level 4
-		move.l	psb_OldIntVecAud3(a6),a1
+		move.l	psb_OldIntVecAud3(a6),d1
+        beq.b   .na1
+        move.l  d1,a1
 		move.l	a6,-(a7)
 		CALLEXEC	SetIntVector
 		move.l	(a7)+,a6
+.na1
 		moveq	#INTB_AUD2,d0
-		move.l	psb_OldIntVecAud2(a6),a1
+		move.l	psb_OldIntVecAud2(a6),d1
+        beq.b   .na2
+        move.l  d1,a1
 		move.l	a6,-(a7)
 		CALLEXEC	SetIntVector
 		move.l	(a7)+,a6
-		moveq	#INTB_AUD1,d0
-		move.l	psb_OldIntVecAud1(a6),a1
+.na2
+        moveq	#INTB_AUD1,d0
+		move.l	psb_OldIntVecAud1(a6),d1
+        beq.b   .na3
+        move.l  d1,a1
 		move.l	a6,-(a7)
 		CALLEXEC	SetIntVector
 		move.l	(a7)+,a6
-		moveq	#INTB_AUD0,d0
-		move.l	psb_OldIntVecAud0(a6),a1
+.na3
+        moveq	#INTB_AUD0,d0
+		move.l	psb_OldIntVecAud0(a6),d1
+        beq.b   .na4
+        move.l  d1,a1
 		move.l	a6,-(a7)
 		CALLEXEC	SetIntVector
 		move.l	(a7)+,a6
-		move.w	#0,psb_IntVecAudFlag(a6)
+.na4
+        move.w	#0,psb_IntVecAudFlag(a6)
 .3
         cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
         beq.b   .resid
@@ -5218,8 +5303,11 @@ level4H3RSync
 
 *-----------------------------------------------------------------------*
 level4Handler4	move.l	_PlaySidBase,a6
+		tst.l	ch4_ProgPointer(a1)
+		beq.b   .1
 		move.l	ch4_ProgPointer(a1),a5
 		jmp	(a5)
+.1      rts
 
 *-----------------------------------------------------------------------*
 GalwayFourStart
@@ -5239,7 +5327,8 @@ GalwayFourStart
 
 *-----------------------------------------------------------------------*
 GalwayFour	move.w	#INTF_AUD3,INTREQ(a0)
-		move.w	ch4_SamVol(a1),AUD3VOL(a0)
+		;move.w	ch4_SamVol(a1),AUD3VOL(a0)
+		bsr	SetCh4Vol
 		bsr	GetNextFour
 		move.w	d0,ch4_SamPer(a1)
 		move.w	d0,AUD3PER(a0)
@@ -5276,7 +5365,8 @@ HuelsFourStart
 *-----------------------------------------------------------------------*
 HuelsFour
 		move.w	#INTF_AUD3,INTREQ(a0)
-		move.w	ch4_SamVol(a1),AUD3VOL(a0)
+;		move.w	ch4_SamVol(a1),AUD3VOL(a0)
+		bsr	SetCh4Vol
 		move.l	ch4_SamRepAdr(a1),AUD3LC(a0)
 		move.w	ch4_SamRepLen(a1),AUD3LEN(a0)
 		subq.b	#1,ch4_Repeat(a1)
@@ -7985,6 +8075,7 @@ residData2     ds.b    resid_SIZEOF
     beq.b   .1
     rts
 .1
+    * Adjust sample volume    
     push    d0
     move.l  psb_reSID(a6),a0
     jsr     sid_set_volume
@@ -8410,6 +8501,8 @@ stopResidWorkerTask:
 
 
 * Playback task
+* Not actually used for playback at the moment since 
+* the default mode is interrupt playback instead of task playback.
 residWorkerEntryPoint
     SPRINT  "task:starting"
     move.l  4.w,a6
@@ -8651,8 +8744,25 @@ residLevel1HandlerDebug:
 residLevel1Handler:
    	movem.l d2-d7/a2-a4/a6,-(sp)
     move.l  a1,a6
+
     cmp.w   #PM_PLAY,psb_PlayMode(a6)
     bne.b   .x
+
+    tst.w   psb_Sid2Address(a6)
+    bne.b   .xx
+    * Play samples in the 4th channel along with reSID.
+    * Do it before the next cycle to correct
+    * the sync with the reSID sound output somewhat.
+	move.l	psb_C64Mem(a6),a5
+	add.l	#$0000D400,a5
+	lea	_custom,a4		;HardwareBase
+    jsr     CreateFour
+    * Store Ch4 activation status.
+    * This prevents reSID poking ch4 registers.
+	move.l	psb_Chan4(a6),a0
+    move.b  ch4_Active(a0),d0
+    or.b    d0,ch4_WasActive(a0)
+.xx
     jsr     Play64
 .x
     bsr.b   switchAndFillBuffer
@@ -8675,12 +8785,19 @@ switchAndFillBuffer:
     movem.l a1/a2,sidBufferAHi(a0)
     endb    a0
 
-    move.l  a1,$a0+$dff000 
-    move.l  a2,$d0+$dff000 
+    move.l  a1,$a0+$dff000
     move.l  a1,$b0+$dff000 
     move.l  a2,$c0+$dff000 
+
+	move.l	psb_Chan4(a6),a0
+    move.b  ch4_WasActive(a0),-(sp)
+    bne.b   .1 
+    * Poke ch4 if not used for digisamples
+    move.l  a2,$d0+$dff000 
+.1
  
     move.l   psb_reSID(a6),a0
+
     * output buffer pointers a1 and a2 set above
     move.l  cyclesPerFrame(pc),d0
     * buffer size limit
@@ -8692,9 +8809,13 @@ switchAndFillBuffer:
 
     lsr     #1,d0
     move    d0,$a4+$dff000   * words
-    move    d0,$d4+$dff000   * words
     move    d0,$b4+$dff000   * words
     move    d0,$c4+$dff000   * words
+    tst.b   (sp)+
+    bne.b   .2
+    * Poke ch4 if not used for digisamples
+    move    d0,$d4+$dff000   * words
+.2
     rts
 
 .sid2
