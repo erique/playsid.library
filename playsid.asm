@@ -126,7 +126,7 @@ SPRINT  macro
         include lvo/timer_lib.i
         include devices/timer.i
         include	devices/ahi.i
-        include	devices/ahi_lib.i
+        include lvo/ahi.i
     	include	dos/dostags.i
 
 	LIST
