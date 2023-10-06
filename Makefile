@@ -10,7 +10,7 @@ OBJCOPY ?= $(VBCC)/bin/m68k-amigaos-objcopy
 CFLAGS := -O2 -g -noixemul -m68020 -mregparm=4 -fomit-frame-pointer -DPLAYSID
 
 SOURCE   := playsid.asm
-INCLUDES := playsid_libdefs.i
+INCLUDES := playsid_libdefs.i external.asm resid-68k/resid-68k.s resid-68k/resid-68k.i
 
 TARGET   := playsid.library test_blaster
 LISTFILE := playsid.txt
@@ -22,7 +22,7 @@ all: $(TARGET)
 clean:
 	rm -f $(TARGET) $(LISTFILE) playsid.map test_blaster.map *.o *.sym
 
-playsid.o: playsid.asm playsid_libdefs.i external.asm Makefile
+playsid.o: playsid.asm $(INCLUDES) Makefile
 	$(VASM) $< -o $@ -L $(LISTFILE) $(VASM_FLAGS) -Iresid-68k
 	$(OBJCOPY) --rename-section reSID_data=.data $@
 
