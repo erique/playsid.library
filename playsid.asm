@@ -6,16 +6,112 @@
 *									*
 *=======================================================================*
 
+* reSID settings and constants
+
+; Set to 1 to enable the Paula 14-bit output
+  ifnd ENABLE_14BIT
+ENABLE_14BIT    = 1
+  endif
+
+; Set to 1 to save SID register dump into a file
+ENABLE_REGDUMP  = 0
+REGDUMP_SIZE    = 100000
+
+; Set to 1 to do playback in interrupts.
+; This makes the audio smooth and uninterruptible,
+; but may hang the whole system if CPU runs low.
+
+; Set to 0 to do playback in a task.
+; This will not hang the system but music playback
+; will easily be disturbed by other things happening 
+; in the system. 
+  ifnd ENABLE_LEV4PLAY
+ENABLE_LEV4PLAY = 1
+  endif
+
+
+* Period should be divisible by 64 for bug free 14-bit output
+PAULA_PERIOD=128    
+PAL_CLOCK=3546895
+* Sampling frequency: PAL_CLOCK/PAULA_PERIOD=27710.1171875
+PLAYBACK_FREQ = PAL_CLOCK/PAULA_PERIOD
+
+* "single speed"
+* reSID update frequency 50 Hz:
+* Samples per 1/50s = 554.20234375
+* Samples per 1/50s as 22.10 FP = 567503.2
+SAMPLES_PER_FRAME_50Hz =  567503
+
+* "double speed"
+* reSID update frequency 100 Hz:
+* Samples per 1/100s = 277.10117
+* Samples per 1/100s as 22.10 FP = 283751.59808
+SAMPLES_PER_FRAME_100Hz = 283752
+
+* "4-speed"
+* reSID update frequency 200 Hz:
+* Samples per 1/200s = 138.550585
+* Samples per 1/200s as 22.10 FP = 141875.79904
+SAMPLES_PER_FRAME_200Hz = 141876
+
+* "8-speed"
+* reSID update frequency 400 Hz:
+* Samples per 1/400s = 69.275292
+* Samples per 1/400s as 22.10 FP = 70937.9
+SAMPLES_PER_FRAME_400Hz = 70938
+
+* "12-speed"
+* reSID update frequency 600 Hz:
+* Samples per 1/600s = 46.18352864
+* Samples per 1/600s as 22.10 FP = 47291.93333
+SAMPLES_PER_FRAME_600Hz = 47292
+
+* Output buffer size, this needs to be big enough, exact size not important.
+* "single speed" buffer is 554 bytes
+SAMPLE_BUFFER_SIZE = 600
+
+* Enable debug logging into a console window
+* Enable debug colors
+DEBUG = 0
+SERIALDEBUG = 0
+COUNTERS = 0
+
+
+* Macro to print to debug console
+DPRINT  macro
+        ifne     DEBUG
+        jsr      desmsgDebugAndPrint
+        dc.b     \1,10,0
+        even
+        endc
+        endm
+
+SPRINT  macro
+        ifne     SERIALDEBUG
+        jsr      desmsgDebugAndPrint
+        dc.b     \1,10,0
+        even
+        endc
+        endm
+
+
+  ifd __VASM
+    ; Turn off optimizations for main playsid code
+    opt o-
+  endif
+
+
 *=======================================================================*
 *	INCLUDES							*
 *=======================================================================*
 	NOLIST
-		include	lvo/exec_lib.i
+		include lvo/exec_lib.i
 		include	exec/execbase.i
 		include	exec/initializers.i
 		include	exec/memory.i
 		include	exec/libraries.i
 		include	exec/resident.i
+        include exec/tasks.i
 		include intuition/intuition.i
 		include	resources/cia.i
 		include	lvo/cia_lib.i
@@ -23,8 +119,16 @@
 		include	hardware/cia.i
 		include	hardware/dmabits.i
 		include	hardware/intbits.i
-
+        include lvo/dos_lib.i
 		include	playsid_libdefs.i
+    	include	dos/dosextens.i
+       	include	dos/var.i
+        include lvo/timer_lib.i
+        include devices/timer.i
+        include	devices/ahi.i
+        include lvo/ahi.i
+    	include	dos/dostags.i
+
 	LIST
 *=======================================================================*
 *	EXTERNAL REFERENCES						*
@@ -68,6 +172,7 @@ RomTagStruct	dc.w	RTC_MATCHWORD
 LibraryName	PSIDLIB_NAME
 LibraryIDString	PSIDLIB_IDSTRING
 		PSIDLIB_COPYRIGHT
+        even
 
 AutoInitTable	dc.l	psb_SIZEOF
 		dc.l	AutoInitVectors
@@ -102,6 +207,16 @@ AutoInitVectors	;***** Standard System Routines *****
 		dc.l	@SetDisplaySignal
 		dc.l	@SetDisplayEnable
 
+		;****** New stuff, reSID support ******
+        dc.l    @SetOperatingMode
+        dc.l    @GetOperatingMode
+        dc.l    @SetVolume
+        dc.l    @SetResidChipModel
+        dc.l    @SetResidFilter
+        dc.l    @GetResidAudioBuffer
+        dc.l    @MeasureResidPerformance
+        dc.l    @GetSongSpeed
+        dc.l    @SetAHIMode
 		dc.l	-1
 
 AutoInitStructure
@@ -119,6 +234,8 @@ AutoInitFunction
 		move.l	a6,psb_SysLib(a5)
 		move.l	a0,psb_SegList(a5)
 		move.l	a5,_PlaySidBase
+        move.l  #residData,psb_reSID(a5)
+        move.l  #residData2,psb_reSID2(a5)
 
 		lea	Display,a2
 		move.l	a2,psb_DisplayData(a5)
@@ -170,10 +287,13 @@ AutoInitFunction
 		move.w	d0,psb_ChannelEnable+4(a6)
 		move.w	d0,psb_ChannelEnable+6(a6)
 		move.w	d0,psb_AudioDevice(a6)
+        move.w  #-1,psb_OperatingMode(a6)
 
 		clr.w	psb_TimeSeconds(a6)		;Set time to 00:00
 		clr.w	psb_TimeMinutes(a6)
 		clr.w	psb_UpdateCounter(a6)
+
+        DPRINT  "Open"
 
 .end		move.l	a6,d0
 		rts
@@ -182,6 +302,9 @@ AutoInitFunction
 		subq.w	#1,LIB_OPENCNT(a6)
 		bne.s	.1
 		bsr	@FreeEmulResource
+ if DEBUG
+        jsr     CloseDebug
+ endif
 		btst	#LIBB_DELEXP,psb_Flags(a6)
 		beq.s	.1
 		bsr.s	@Expunge
@@ -215,19 +338,36 @@ AutoInitFunction
 *	MAIN ROUTINES							*
 *=======================================================================*
 @AllocEmulResource
+        DPRINT  "AllocEmulResource"
 		;CALLEXEC Forbid
 		movem.l	d2-d7/a2-a6,-(a7)
+    
 		tst.w	psb_EmulResourceFlag(a6)
 		beq.s	.LibOK
 		moveq	#SID_LIBINUSE,d0
-		bra.s	.Exit
-.LibOK		bsr	start_sid_blaster
+		bra 	.Exit
+.LibOK		
+        move.l  a6,a5
+        move.l  4.w,a6
+        lea     _DOSName(pc),a1
+        jsr     _LVOOldOpenLibrary(a6)
+        move.l  d0,psb_DOSBase(a5)
+        move.l  a5,a6
+        bsr     SetDefaultOperatingMode
+        bsr     GetEnvDebugFlag
+
+        cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
+        bne.b   .noBlaster
+        bsr     start_sid_blaster
 		tst.l	d0
-		bne.s	.Exit
-		bsr	AllocEmulMem
+        bne    .Exit
+.noBlaster
+
+        bsr	    AllocEmulMem
 		tst.l	d0
-		bne.s	.Exit
-.MemOK		bsr	CheckCPU
+		bne  	.Exit
+.MemOK		
+        bsr	CheckCPU
 		bsr	Make6502Emulator
 		bsr	MakeMMUTable
 		bsr	MakeVolume
@@ -235,24 +375,194 @@ AutoInitFunction
 		bsr	MakeEnvelope
 		move.w	#PM_STOP,psb_PlayMode(a6)
 		move.w	#1,psb_EmulResourceFlag(a6)
-		moveq	#0,d0
-.Exit		movem.l	(a7)+,d2-d7/a2-a6
+
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .2
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        bne.b   .1
+.2
+        jsr     initResid
+.1  
+        * Default volume
+        moveq   #$40,d0
+        jsr     @SetVolume
+    
+ ifne ENABLE_REGDUMP
+        clr.l   regDumpOffset
+ endif
+
+        move.l  4.w,a6
+        cmp     #37,LIB_VERSION(a6)
+        blo.b   .3
+        jsr     _LVOCacheClearU(a6)
+.3
+        * Status: OK
+        moveq	#0,d0
+.Exit
+        movem.l	(a7)+,d2-d7/a2-a6
 		;CALLEXEC Permit
 		rts
 
+
+_DOSName:
+    dc.b    "dos.library",0
+    even
+
+* Figure out a value for the operating mode if it has not been set by the API user.
+SetDefaultOperatingMode:
+        tst.w   psb_OperatingMode(a5)
+        bmi.b   .1
+        rts
+.1
+        move.l  a6,a5
+        * Default mode
+
+        move    #OM_NORMAL,psb_OperatingMode(a5)
+        lea     -20(sp),sp
+    
+        * Read env variable if possible
+        move.l  psb_DOSBase(a5),a6
+        cmp     #36,LIB_VERSION(a6)
+        blo     .continue
+
+        move.l  #.envVarName,d1     * variable name
+        move.l  sp,d2               * output buffer
+        moveq   #20,d3              * space available
+        move.l  #GVF_GLOBAL_ONLY,d4 * global variable
+        jsr     _LVOGetVar(a6)      * get it
+        tst.l   d0
+        bmi.b   .continue
+        move.l  sp,a0
+        cmp.b   #"0",(a0)
+        beq.b   .got0
+        cmp.b   #"1",(a0)
+        beq.b   .got1
+        cmp.b   #"2",(a0)
+        beq.b   .got2
+        cmp.b   #"3",(a0)
+        beq.b   .got3
+        bra.b   .continue
+.got0
+        move    #OM_NORMAL,psb_OperatingMode(a5)
+        bra.b  .continue
+.got1
+        move    #OM_RESID_6581,psb_OperatingMode(a5)
+        bra.b  .continue
+.got2
+        move    #OM_RESID_8580,psb_OperatingMode(a5)
+        bra.b  .continue
+.got3
+        move    #OM_SIDBLASTER_USB,psb_OperatingMode(a5)
+.continue
+
+        lea     20(sp),sp
+        move.l  a5,a6
+        rts
+
+.envVarName:
+    dc.b    "PlaySIDMode",0
+
+
+GetEnvDebugFlag:
+        lea     -20(sp),sp
+        move.l  a6,a5
+        move.l  psb_DOSBase(a5),a6
+        cmp     #36,LIB_VERSION(a6)
+        blo     .continue
+
+        move.l  #.envVarNameDebug,d1 * variable name
+        move.l  sp,d2               * output buffer
+        moveq   #20,d3              * space available
+        move.l  #GVF_GLOBAL_ONLY,d4 * global variable
+        jsr     _LVOGetVar(a6)      * get it
+        tst.l   d0
+        bmi.b   .continue
+        move.l  sp,a0
+        move    #0,psb_Debug(a5)
+        cmp.b   #"0",(a0)
+        beq.b   .continue
+        move    #1,psb_Debug(a5)
+.continue
+        lea     20(sp),sp
+        move.l  a5,a6
+        rts
+
+.envVarNameDebug:
+    dc.b    "PlaySIDDebug",0
+    even
+
 *-----------------------------------------------------------------------*
 @FreeEmulResource
+        DPRINT  "FreeEmulResource"
 		;CALLEXEC Forbid
 		movem.l	d2-d7/a2-a6,-(a7)
 		tst.w	psb_EmulResourceFlag(a6)
 		beq.s	.Exit
 		bsr	@StopSong
 		bsr	FreeEmulMem
-		bsr	stop_sid_blaster
 		clr.w	psb_EmulResourceFlag(a6)
-.Exit		movem.l	(a7)+,d2-d7/a2-a6
+
+        ; Safe to call even if not initialized:
+        bsr     stop_sid_blaster
+
+        ; Not safe if initRESID has not been called earlier:    
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .2
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        bne.b   .1
+.2      jsr     resetResid
+.1  
+        jsr     ahiStop
+
+        * Undefine operating mode so that will be determined again the next time.
+        move.w  #-1,psb_OperatingMode(a6)
+.Exit		
+
+
+  if ENABLE_REGDUMP
+        move.l  a6,-(sp)
+        move.l  psb_DOSBase(a6),a6
+        jsr     saveDump
+        move.l  (sp)+,a6
+  endif
+
+        move.l  psb_DOSBase(a6),a1
+        move.l  4.w,a6
+        jsr     _LVOCloseLibrary(a6)
+
+        movem.l	(a7)+,d2-d7/a2-a6
 		;CALLEXEC Permit
 		rts
+
+*-----------------------------------------------------------------------*
+
+* To be called before AllocEmulResource
+* in:
+*   d0 = Operating mode
+*   d1 = reSID mode, optional
+@SetOperatingMode
+ if DEBUG
+        ext.l   d0
+        ext.l   d1
+        DPRINT  "SetOperatingMode mode=%ld resid=%ld"
+ endif
+    	move.w	d0,psb_OperatingMode(a6)
+    	move.w	d1,psb_ResidMode(a6)
+		rts
+
+
+@GetOperatingMode
+        moveq   #0,d0
+    	move.w	psb_OperatingMode(a6),d0
+        moveq   #0,d1
+    	move.w	psb_ResidMode(a6),d1
+		rts
+
+@SetAHIMode
+        DPRINT  "SetAHIMode=%lx"
+        move.l  d0,psb_AhiMode(a6)
+        move.l  d0,ahiMode
+        rts
 
 *-----------------------------------------------------------------------*
 @SetVertFreq	move.w	d0,psb_VertFreq(a6)
@@ -268,7 +578,8 @@ AutoInitFunction
 		rts
 
 *-----------------------------------------------------------------------*
-@SetDisplaySignal	move.l	a0,psb_DisplaySignalTask(a6)
+@SetDisplaySignal	
+        move.l	a0,psb_DisplaySignalTask(a6)
 		move.l	d0,psb_DisplaySignalMask(a6)
 		rts
 
@@ -306,6 +617,8 @@ AutoInitFunction
 
 *-----------------------------------------------------------------------*
 @SetModule	;CALLEXEC Forbid
+        DPRINT  "SetModule"
+        move.l  a1,-(sp)
 		cmpi.l	#SID_HEADER,(a1)		; have header?
 		bne.s	.1
 		move.w	sidh_length(a1),d1		; skip header
@@ -328,11 +641,73 @@ AutoInitFunction
 .2		move.w	d0,psb_SongFlags(a6)
 
 		move.w	#1,psb_SongSetFlag(a6)
+        move.l  (sp)+,a1
+
+
+; +7A    BYTE secondSIDAddress
+; Valid values:
+; - 0x00 (PSID V2NG)
+; - 0x42 - 0x7F, 0xE0 - 0xFE Even values only (Version 3+)
+        clr     psb_Sid2Address(a6)
+        cmp     #3,sidh_version(a0)
+        blo.b   .x
+        move.b  $7a(a1),d0
+        btst    #0,d0
+        bne.b   .x
+        cmp.b   #$42,d0
+        blo.b   .x
+        cmp.b   #$7f,d0
+        bls.b   .sid2      
+        cmp.b   #$e0,d0
+        blo.b   .x  
+        cmp.b   #$fe,d0
+        bls.b   .sid2    
+.x
 		;CALLEXEC Permit
 		rts
 
+.sid2
+        and.l   #$ff,d0
+        lsl     #4,d0
+        add.l   #$d000,d0
+        move.w  d0,psb_Sid2Address(a6)
+        DPRINT  "2nd SID at %lx"
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .3
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        beq.b   .3
+        rts
+.3
+        bsr     MakeMMUTable2
+        rts
+
+
+sid2Enabled:
+    tst.w  psb_Sid2Address(a6)
+    rts
+
+@GetSongSpeed
+        moveq   #0,d0
+        move.w	psb_TimerConstB(a6),d0
+        bne.b   .1
+        move    #28419/2,d1
+.1      move.l  #(709379+28419/4),d0
+        divu    d1,d0
+        ext.l   d0
+        move    d0,d1
+        divu    #50,d0
+        ext.l   d0
+        divu    #10,d1
+        mulu    #10,d1
+        rts
+
+
 *-----------------------------------------------------------------------*
-@StartSong	;CALLEXEC Forbid
+@StartSong	;CALLEXEC Forbid 
+ if DEBUG
+        ext.l   d0
+        DPRINT  "StartSong %ld"
+ endif
 		movem.l	d2-d7/a2-a6,-(a7)
 		tst.w	psb_SongSetFlag(a6)
 		bne.s	.SongOK
@@ -408,7 +783,9 @@ AutoInitFunction
 
 *-----------------------------------------------------------------------*
 @StopSong	;CALLEXEC Forbid
+        DPRINT  "StopSong"
 		movem.l	d2-d7/a2-a6,-(a7)
+
 		cmp.w	#PM_STOP,psb_PlayMode(a6)
 		beq.s	.Exit
 		cmp.w	#PM_PAUSE,psb_PlayMode(a6)
@@ -427,6 +804,7 @@ AutoInitFunction
 
 *-----------------------------------------------------------------------*
 @PauseSong	;CALLEXEC Forbid
+        DPRINT "PauseSong"
 		movem.l	d2-d7/a2-a6,-(a7)
 		cmp.w	#PM_PLAY,psb_PlayMode(a6)
 		bne.s	.Exit
@@ -442,6 +820,7 @@ AutoInitFunction
 
 *-----------------------------------------------------------------------*
 @ContinueSong	;CALLEXEC Forbid
+        DPRINT "ContinueSong"
 		movem.l	d2-d7/a2-a6,-(a7)
 		cmp.w	#PM_PAUSE,psb_PlayMode(a6)
 		beq.s	.PauseOK
@@ -509,6 +888,7 @@ AutoInitFunction
 
 *-----------------------------------------------------------------------*
 AllocEmulMem
+        DPRINT "AllocEmulMem"
 		ALLOC	psb_PrgMem(a6),PRGMEM_SIZE,MEMF_PUBLIC
 		beq	.Error
 		ALLOC	psb_MMUMem(a6),MMUMEM_SIZE,MEMF_PUBLIC
@@ -519,6 +899,8 @@ AllocEmulMem
 		beq.s	.Error
 		ALLOC	psb_SampleMem(a6),SAMPLEMEM_SIZE,MEMF_CHIP
 		beq.s	.Error
+        jsr     allocResidMemory
+        beq.s   .Error
 		moveq	#0,d0
 		rts
 
@@ -528,11 +910,13 @@ AllocEmulMem
 
 *-----------------------------------------------------------------------*
 FreeEmulMem
+        DPRINT  "FreeEmulMem"
 		FREE	psb_PrgMem(a6),PRGMEM_SIZE
 		FREE	psb_MMUMem(a6),MMUMEM_SIZE
 		FREE	psb_C64Mem(a6),C64MEM_SIZE
 		FREE	psb_EnvelopeMem(a6),ENVELOPEMEM_SIZE
 		FREE	psb_SampleMem(a6),SAMPLEMEM_SIZE
+        jsr     freeResidMemory
 		rts
 
 *-----------------------------------------------------------------------*
@@ -558,7 +942,9 @@ DisplayRequest
 .Exit		rts
 
 *-----------------------------------------------------------------------*
-Init64		movem.l	d2-d7,-(a7)
+Init64	
+        DPRINT "Init64"
+        movem.l	d2-d7,-(a7)
 		move.w	psb_SongTune(a6),d0
 		moveq	#$00,d1
 		moveq	#$00,d2
@@ -572,12 +958,21 @@ Init64		movem.l	d2-d7,-(a7)
 		rts
 
 *-----------------------------------------------------------------------*
-Play64		bsr	EmulNextStep
-		bsr	DoSound
+Play64:
+        bsr	EmulNextStep
+
+        tst.w   psb_OperatingMode(a6)
+        bne.b   .1
+		bsr	    DoSound
+		bsr	    ReadDisplayData
+		bsr	    DisplayRequest
+.1
 		bsr	CalcTime
-		bsr	ReadDisplayData
-		bsr	DisplayRequest
 		bsr	CheckC64TimerA
+
+  ifne ENABLE_REGDUMP
+        addq.w  #1,regDumpTime
+  endif
 		rts
 
 *-----------------------------------------------------------------------*
@@ -740,12 +1135,13 @@ CheckC64TimerA
 		bsr	GetC64TimerA
 		cmp.w	psb_OldC64TimerA(a6),d0
 		beq	.1
-		move.w	d0,psb_OldC64TimerA(a6)
+      	move.w	d0,psb_OldC64TimerA(a6)
 		mulu	psb_ConvClockConst(a6),d0
 		swap	d0
 		move.w	d0,psb_TimerConstB(a6)
 		bsr	SetTimerB			;Timer B!
-		bsr	CalcUpdateFreq
+		bsr	CalcUpdateFreq       
+        jsr calcSamplesAndCyclesPerFrameFromCIATicks
 .1
 		rts
 
@@ -831,6 +1227,7 @@ ReadDisplayData
 
 *-----------------------------------------------------------------------*
 InitSpeed
+    DPRINT  "InitSpeed"
 		movem.l	d2-d3,-(a7)
 		tst.w	psb_SongSpeed(a6)
 		beq.s	.1
@@ -868,11 +1265,16 @@ InitSpeed
 		move.w	d1,psb_TimerConstA(a6)		;Envelope Timer
 		move.w	d2,psb_ConvClockConst(a6)	;Convert Clock C64 to Amiga
 		move.w	d3,psb_ConvFourConst(a6)	;Convert C64 Four Sample speed to Amiga period
+
+        jsr calcSamplesAndCyclesPerFrameFromCIATicks
+
 		movem.l	(a7)+,d2-d3
 		rts
 
 *-----------------------------------------------------------------------*
-InitSID		movem.l	a2-a3,-(a7)
+InitSID		
+        DPRINT "InitSID"
+        movem.l	a2-a3,-(a7)
 		move.l	psb_Enve1(a6),a0
 		move.w	#env_SIZEOF,d0
 		bsr	.Clear
@@ -935,13 +1337,23 @@ InitSID		movem.l	a2-a3,-(a7)
 		move.w	#-1,ch_SamPer(a0)
 		move.w	#4,ch_SamLen(a0)
 
-		movem.l	(a7)+,a2-a3
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .2
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        bne.b   .1
+.2
+        jsr     resetResid
+.1  
+    	movem.l	(a7)+,a2-a3
 		rts
 .Clear
 		clr.b	(a0)+
 		subq.w	#1,d0
 		bne.s	.Clear
-
+        
+        ;; Missing RTS added
+        rts
+       
 *-----------------------------------------------------------------------*
 InitSIDCont	move.l	psb_Chan1(a6),a0
 		move.w	#ch_SIZEOF,d0
@@ -971,6 +1383,9 @@ InitSIDCont	move.l	psb_Chan1(a6),a0
 		clr.b	(a0)+
 		subq.w	#1,d0
 		bne.s	.Clear
+
+        ;; Missing RTS added
+        rts
 
 *-----------------------------------------------------------------------*
 CalcUpdateFreq
@@ -2962,13 +3377,19 @@ Envelopes
 		move.l	psb_VolumePointer(a6),a1
 		move.l	psb_Enve1(a6),a0
 		moveq	#$00,d0
-		bsr	.Calculate
+		bsr	    .Calculate
+        mulu.w  psb_Volume(a6),d0
+        lsr     #6,d0
 		move.w	d0,$dff0a8
 		move.l	psb_Enve2(a6),a0
-		bsr.s	.Calculate
+		bsr 	.Calculate
+        mulu.w  psb_Volume(a6),d0
+        lsr     #6,d0
 		move.w	d0,$dff0b8
 		move.l	psb_Enve3(a6),a0
 		bsr.s	.Calculate
+        mulu.w  psb_Volume(a6),d0
+        lsr     #6,d0
 		move.w	d0,$dff0c8
 		swap	d1
 		move.w	d1,d2
@@ -3359,8 +3780,9 @@ Make6502Emulator
 *-----------------------------------------------------------------------*
 MakeMMUTable
 	move.l	psb_MMUMem(a6),a1
-	bsr.s	.Make
-	rts
+	bsr 	.Make
+    rts
+
 .Make
 	movem.l	a2-a3/d4-d7,-(a7)
 	move.l	a1,a2				;0000-D400
@@ -3394,11 +3816,36 @@ MakeMMUTable
 	bne.s	.FixIO
 	rts
 
-.D400	dc.b	$80,$81,$82,$83,$84,$85,$86,$87	;$D400-$D418
+    * MMU bytes for SID, bit 7 is set
+.D400	
+    dc.b	$80,$81,$82,$83,$84,$85,$86,$87	;$D400-$D418
 	dc.b	$88,$89,$8a,$8b,$8c,$8d,$8e,$8f
 	dc.b	$90,$91,$92,$93,$94,$95,$96,$97
 	dc.b	$98,$00,$00,$00,$00,$00,$00,$00
 	
+* IO range for SID2, to be called after SetModule when the SID2 address is known
+MakeMMUTable2:
+	movem.l	d0-a6,-(a7)
+    moveq   #0,d0
+    move.w  psb_Sid2Address(a6),d0
+    beq.b   .1
+	move.l	psb_MMUMem(a6),a1
+    add.l   d0,a1
+    lea     .Sid2(pc),a0
+    moveq   #.Sid2e-.Sid2-1,d0
+.2  move.b  (a0)+,(a1)+
+    dbf     d0,.2
+.1	movem.l	(a7)+,d0-a6
+    rts
+
+    * MMU bytes for SID2, offset by $20
+.Sid2
+    dc.b	$80+$20,$81+$20,$82+$20,$83+$20,$84+$20,$85+$20,$86+$20,$87+$20
+	dc.b	$88+$20,$89+$20,$8a+$20,$8b+$20,$8c+$20,$8d+$20,$8e+$20,$8f+$20
+	dc.b	$90+$20,$91+$20,$92+$20,$93+$20,$94+$20,$95+$20,$96+$20,$97+$20
+	dc.b	$98+$20,$00,$00,$00,$00,$00,$00,$00
+.Sid2e
+
 *-----------------------------------------------------------------------*
 Jump6502Routine		;6502 CODE MUST BE ENDED WITH RTS!
 			;D0=AC,D1=XR,D2=YR,D3+D4+D5=P,D6=PC,D7=SP
@@ -3460,6 +3907,7 @@ ReadIO					;Read 64 I/O $D000-$DFFF
 	add.b	d6,d6
 	move.w	.JMP(pc,d6.w),d3
 	jmp	.JMP(pc,d3.w)
+
 .JMP
 	dc.w	.D400-.JMP		;80
 	dc.w	.D401-.JMP
@@ -3493,6 +3941,41 @@ ReadIO					;Read 64 I/O $D000-$DFFF
 
 	dc.w	.D418-.JMP		;98
 
+    ; Fill the gap
+    dc.w    0   ; D419
+    dc.w    0   ; D41A
+    dc.w    0   ; D41B
+    dc.w    0   ; D41C
+    dc.w    0   ; D41D
+    dc.w    0   ; D41E
+    dc.w    0   ; D41F
+
+	dc.w	.D420-.JMP		;80
+	dc.w	.D421-.JMP
+	dc.w	.D422-.JMP
+	dc.w	.D423-.JMP
+	dc.w	.D424-.JMP		;84
+	dc.w	.D425-.JMP
+	dc.w	.D426-.JMP
+	dc.w	.D427-.JMP
+	dc.w	.D428-.JMP		;88
+	dc.w	.D429-.JMP
+	dc.w	.D42A-.JMP
+	dc.w	.D42B-.JMP
+	dc.w	.D42C-.JMP		;8C
+	dc.w	.D42D-.JMP
+	dc.w	.D42E-.JMP
+	dc.w	.D42F-.JMP
+	dc.w	.D430-.JMP		;90
+	dc.w	.D431-.JMP
+	dc.w	.D432-.JMP
+	dc.w	.D433-.JMP
+	dc.w	.D434-.JMP		;94
+	dc.w	.D435-.JMP
+	dc.w	.D436-.JMP
+	dc.w	.D437-.JMP
+	dc.w	.D438-.JMP		;98
+    
 .D400						;80
 	move.w	#$D400,d7
 	move.b	0(a0,d7.l),d6
@@ -3594,13 +4077,44 @@ ReadIO					;Read 64 I/O $D000-$DFFF
 	move.b	0(a0,d7.l),d6
 	jmp	(a2)
 
+.D420
+.D421
+.D422
+.D423
+.D424
+.D425
+.D426
+.D427
+.D428
+.D429
+.D42A
+.D42B
+.D42C
+.D42D
+.D42E
+.D42F
+.D430
+.D431
+.D432
+.D433
+.D434
+.D435
+.D436
+.D437
+.D438
+    clr.b   d6
+	jmp	    (a2)
+
 *-----------------------------------------------------------------------*
 WriteIO					;Write 64 I/O $D000-$DFFF
 					;D7=IOReg,D6=Byte,A2=Addr
 					;USAGE: D6,D7,A2
-	add.b	d7,d7
+    * d7 is a byte from the MMUTable, with bit 7 set
+    * Drop the 7th bit and make a word index.
+    add.b   d7,d7
 	move.w	.JMP(pc,d7.w),d7
 	jmp	.JMP(pc,d7.w)
+
 .JMP
 	dc.w	.D400-.JMP		;80
 	dc.w	.D401-.JMP
@@ -3633,31 +4147,172 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	dc.w	.D417-.JMP
 
 	dc.w	.D418-.JMP		;98
+    ;----------------------------------
+    ; Fill the gap
+    dc.w    0   ; D419
+    dc.w    0   ; D41A
+    dc.w    0   ; D41B
+    dc.w    0   ; D41C
+    dc.w    0   ; D41D
+    dc.w    0   ; D41E
+    dc.w    0   ; D41F
+
+	dc.w	.D420-.JMP		;80
+	dc.w	.D421-.JMP
+	dc.w	.D422-.JMP
+	dc.w	.D423-.JMP
+	dc.w	.D424-.JMP		;84
+	dc.w	.D425-.JMP
+	dc.w	.D426-.JMP
+	dc.w	.D427-.JMP
+	dc.w	.D428-.JMP		;88
+	dc.w	.D429-.JMP
+	dc.w	.D42A-.JMP
+	dc.w	.D42B-.JMP
+	dc.w	.D42C-.JMP		;8C
+	dc.w	.D42D-.JMP
+	dc.w	.D42E-.JMP
+	dc.w	.D42F-.JMP
+	dc.w	.D430-.JMP		;90
+	dc.w	.D431-.JMP
+	dc.w	.D432-.JMP
+	dc.w	.D433-.JMP
+	dc.w	.D434-.JMP		;94
+	dc.w	.D435-.JMP
+	dc.w	.D436-.JMP
+	dc.w	.D437-.JMP
+	dc.w	.D438-.JMP		;98
+
+    ; ---------------------------------
+
+.D420:
+	move.w	#$D400,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D421:
+	move.w	#$D401,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D422:
+	move.w	#$D402,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D423:
+	move.w	#$D403,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D424:
+	move.w	#$D404,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D425:
+	move.w	#$D405,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D426:
+	move.w	#$D406,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D427:
+	move.w	#$D407,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D428:
+	move.w	#$D408,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D429:
+	move.w	#$D409,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D42A:
+	move.w	#$D40A,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D42B:
+	move.w	#$D40B,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D42C:
+	move.w	#$D40C,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D42D:
+	move.w	#$D40D,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D42E:
+	move.w	#$D40E,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D42F:
+	move.w	#$D40F,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D430:
+	move.w	#$D410,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D431:
+	move.w	#$D411,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D432:
+	move.w	#$D412,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D433:
+	move.w	#$D413,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D434:
+	move.w	#$D414,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D435:
+	move.w	#$D15,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D436:
+	move.w	#$D416,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D437:
+	move.w	#$D417,d7
+    bsr     writeSID2Register
+    Next_Inst
+.D438:
+	move.w	#$D418,d7
+    bsr     writeSID2Register
+    Next_Inst
+
+    ; ---------------------------------
 
 .D400						;80
 	move.w	#$D400,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
 	Next_Inst
 .D401
 	move.w	#$D401,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
 	Next_Inst
 .D402
 	move.w	#$D402,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
 	Next_Inst
 .D403
 	move.w	#$D403,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
 	Next_Inst
 .D404
 	move.w	#$D404,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
+    bne.b   .skip1
 	move.l	a6,-(a7)
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve1(a6),a2
@@ -3681,11 +4336,13 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	st	env_Mode(a2)			;Attack
 .D4042
 	move.l	(a7)+,a6
+.skip1
 	Next_Inst
 .D405
 	move.w	#$D405,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
+    bne.b   .skip2
 	move.l	a6,d7
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve1(a6),a2
@@ -3697,11 +4354,13 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	move.l	psb_MMUMem(a6),a3
 	move.l	d7,a6
 	moveq	#$00,d7
+.skip2
 	Next_Inst
 .D406
 	move.w	#$D406,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
+    bne.b   .skip3
 	move.l	a6,d7
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve1(a6),a2
@@ -3713,31 +4372,33 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	move.l	psb_MMUMem(a6),a3
 	move.l	d7,a6
 	moveq	#$00,d7
+.skip3
 	Next_Inst
 .D407
 	move.w	#$D407,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
 	Next_Inst
 .D408
 	move.w	#$D408,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
 	Next_Inst
 .D409
 	move.w	#$D409,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
 	Next_Inst
 .D40A
 	move.w	#$D40A,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
 	Next_Inst
 .D40B
 	move.w	#$D40B,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
+    bne.b   .skip4
 	move.l	a6,-(a7)
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve2(a6),a2
@@ -3761,11 +4422,13 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	st	env_Mode(a2)			;Attack
 .D40B2
 	move.l	(a7)+,a6
+.skip4
 	Next_Inst
 .D40C
 	move.w	#$D40C,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
+    bne.b   .skip5
 	move.l	a6,d7
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve2(a6),a2
@@ -3777,11 +4440,13 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	move.l	psb_MMUMem(a6),a3
 	move.l	d7,a6
 	moveq	#$00,d7
+.skip5
 	Next_Inst
 .D40D
 	move.w	#$D40D,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
+    bne.b   .skip6
 	move.l	a6,d7
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve2(a6),a2
@@ -3793,31 +4458,33 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	move.l	psb_MMUMem(a6),a3
 	move.l	d7,a6
 	moveq	#$00,d7
+.skip6
 	Next_Inst
 .D40E
 	move.w	#$D40E,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
 	Next_Inst
 .D40F
 	move.w	#$D40F,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
 	Next_Inst
 .D410
 	move.w	#$D410,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
 	Next_Inst
 .D411
 	move.w	#$D411,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
 	Next_Inst
 .D412
 	move.w	#$D412,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
+    bne.b   .skip7
 	move.l	a6,-(a7)
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve3(a6),a2
@@ -3841,11 +4508,13 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	st	env_Mode(a2)			;Attack
 .D4122
 	move.l	(a7)+,a6
+.skip7
 	Next_Inst
 .D413
 	move.w	#$D413,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
+    bne.b   .skip8
 	move.l	a6,d7
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve3(a6),a2
@@ -3857,11 +4526,13 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	move.l	psb_MMUMem(a6),a3
 	move.l	d7,a6
 	moveq	#$00,d7
+.skip8
 	Next_Inst
 .D414
 	move.w	#$D414,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr     writeSIDRegister
+    bne.b   .skip9
 	move.l	a6,d7
 	move.l	_PlaySidBase,a6
 	move.l	psb_Enve3(a6),a2
@@ -3873,26 +4544,28 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	move.l	psb_MMUMem(a6),a3
 	move.l	d7,a6
 	moveq	#$00,d7
+.skip9
 	Next_Inst
 .D415
 	move.w	#$D415,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr.b    writeSIDRegister
 	Next_Inst
 .D416
 	move.w	#$D416,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr.b   writeSIDRegister
 	Next_Inst
 .D417
 	move.w	#$D417,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr.b   writeSIDRegister
 	Next_Inst
 .D418
 	move.w	#$D418,d7
 	move.b	d6,0(a0,d7.l)
-	bsr	write_sid_reg
+    bsr.b   writeSIDRegister
+    bne.b   .skip10
 	move.l	a6,d7
 	move.l	_PlaySidBase,a6
 	move.l	psb_Chan4(a6),a2
@@ -3903,26 +4576,82 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	move.l	psb_VolumePointers(a6,d6.w),psb_VolumePointer(a6)
 .D4181	move.l	d7,a6
 	moveq	#$00,d7
+.skip10
 	Next_Inst
+
+
+* Write to SID
+* in:
+*    d6 = data
+*    d7 = address
+* out:
+*    Z set: normal playsid operation
+*    Z clear: was written to reSID/SIDBlaster
+writeSIDRegister:
+	move.l	_PlaySidBase,a2
+    tst.w   psb_OperatingMode(a2)
+    bne.b   .out
+    * Normal playsid mode
+    rts
+.out
+    cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a2)
+    beq.b   write_sid_reg
+
+    * OM_RESID_6581, OM_RESID_8580
+
+    movem.l d0-a6,-(sp)
+ ifne ENABLE_REGDUMP
+    move.l  regDumpOffset,d0
+    cmp.l   #REGDUMP_SIZE,d0
+    bhs.b   .1
+    addq.l  #1,regDumpOffset
+    lea     regDump,a1
+    move.w  regDumpTime,(a1,d0.l*4)
+    move.b  d7,2(a1,d0.l*4)
+    move.b  d6,3(a1,d0.l*4)
+.1
+  endif
+
+    move.b  d6,d0
+    move.b  d7,d1
+    move.l  psb_reSID(a2),a0
+    jsr     sid_write
+    moveq   #1,d0
+    movem.l (sp)+,d0-a6
+    rts
+
+
+* Write to SID 2
+* in:
+*    d6 = data
+*    d7 = Register offset 
+* out:
+*    Z set: normal playsid operation
+*    Z clear: was written to reSID
+writeSID2Register:
+	move.l	_PlaySidBase,a2
+    tst.w   psb_OperatingMode(a2)
+    bne.b   .out
+    * Normal playsid mode
+.x
+    rts
+.out
+    cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a2)
+    beq.b   .x
+
+    * OM_RESID_6581, OM_RESID_8580
+
+    movem.l d0-a6,-(sp)
+    move.b  d6,d0
+    move.b  d7,d1
+    move.l  psb_reSID2(a2),a0
+    jsr     sid_write
+    moveq   #1,d0
+    movem.l (sp)+,d0-a6
+    rts
 
 *-----------------------------------------------------------------------*
 
-start_sid_blaster:
-	movem.l	d1-a6,-(sp)
-	jsr	_sid_init
-	tst.l	d0
-	bne.b	.ok
-	moveq.l	#SID_LIBINUSE,d0
-	bra.b	.fail
-.ok	clr.l	d0
-.fail	movem.l	(sp)+,d1-a6
-	rts
-
-stop_sid_blaster:
-	movem.l	d0-a6,-(sp)
-	jsr	_sid_exit
-	movem.l	(sp)+,d0-a6
-	rts
 
 write_sid_reg:
 	movem.l	d0-a6,-(sp)
@@ -3931,6 +4660,27 @@ write_sid_reg:
 	move.l	d7,d0
 	move.l	d6,d1
 	jsr	_sid_write_reg
+    moveq   #1,d0
+	movem.l	(sp)+,d0-a6
+	rts
+
+start_sid_blaster:
+    DPRINT  "start_sid_blaster"
+	movem.l	d1-a6,-(sp)
+	jsr	_sid_init
+	tst.l	d0
+	bne.b	.ok
+    DPRINT  "fail %ld"
+	moveq.l	#SID_NOSIDBLASTER,d0
+	bra.b	.fail
+.ok	clr.l	d0
+.fail	movem.l	(sp)+,d1-a6
+	rts
+
+stop_sid_blaster:
+    DPRINT  "stop_sid_blaster"
+	movem.l	d0-a6,-(sp)
+	jsr	_sid_exit
 	movem.l	(sp)+,d0-a6
 	rts
 
@@ -3960,60 +4710,72 @@ mute_sid:
 *=======================================================================*
 *	INTERRUPT HANDLING ROUTINES					*
 *=======================================================================*
-OpenIRQ		move.l	a6,timerAIntrPSB
+OpenIRQ		
+        DPRINT  "OpenIRQ"
+        move.l	a6,timerAIntrPSB
 		move.l	a6,PlayIntrPSB
-		move.l	psb_Chan1(a6),level4Intr1Data
+	    move.l	psb_Chan1(a6),level4Intr1Data
 		move.l	psb_Chan2(a6),level4Intr2Data
 		move.l	psb_Chan3(a6),level4Intr3Data
 		move.l	psb_Chan4(a6),level4Intr4Data
 
 		lea	_custom,a0
+
+        tst.w   psb_OperatingMode(a6)
+        bne.b   .o1
 		move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTENA(a0)
 		move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTREQ(a0)
-
+.o1
 		tst.w	psb_IntVecAudFlag(a6)
 		bne.s	.1
 
-		moveq	#INTB_AUD0,d0		; Allocate Level 4
-		lea	level4Intr1,a1
-		move.l	a6,-(a7)
-		CALLEXEC	SetIntVector
-		move.l	(a7)+,a6
-		move.l	d0,psb_OldIntVecAud0(a6)
+        * Skip lev4 unless normal mode
+        tst.w   psb_OperatingMode(a6)
+        bne     .1
 
-		moveq	#INTB_AUD1,d0
-		lea	level4Intr2,a1
-		move.l	a6,-(a7)
-		CALLEXEC	SetIntVector
-		move.l	(a7)+,a6
-		move.l	d0,psb_OldIntVecAud1(a6)
-
-		moveq	#INTB_AUD2,d0
-		lea	level4Intr3,a1
-		move.l	a6,-(a7)
-		CALLEXEC	SetIntVector
-		move.l	(a7)+,a6
-		move.l	d0,psb_OldIntVecAud2(a6)
-
-		moveq	#INTB_AUD3,d0
-		lea	level4Intr4,a1
-		move.l	a6,-(a7)
-		CALLEXEC	SetIntVector
-		move.l	(a7)+,a6
-		move.l	d0,psb_OldIntVecAud3(a6)
-
-		move.w	#1,psb_IntVecAudFlag(a6)
-
-.1		lea	CiabName,a1	; Open Cia Resource
+	    moveq	#INTB_AUD0,d0		; Allocate Level 4
+	    lea	level4Intr1,a1
+	    move.l	a6,-(a7)
+	    CALLEXEC	SetIntVector
+	    move.l	(a7)+,a6
+	    move.l	d0,psb_OldIntVecAud0(a6)
+        moveq	#INTB_AUD1,d0
+	    lea	level4Intr2,a1
+	    move.l	a6,-(a7)
+	    CALLEXEC	SetIntVector
+	    move.l	(a7)+,a6
+	    move.l	d0,psb_OldIntVecAud1(a6)
+        moveq	#INTB_AUD2,d0
+	    lea	level4Intr3,a1
+	    move.l	a6,-(a7)
+	    CALLEXEC	SetIntVector
+	    move.l	(a7)+,a6
+	    move.l	d0,psb_OldIntVecAud2(a6)
+        moveq	#INTB_AUD3,d0
+	    lea	level4Intr4,a1
+	    move.l	a6,-(a7)
+	    CALLEXEC	SetIntVector
+	    move.l	(a7)+,a6
+	    move.l	d0,psb_OldIntVecAud3(a6)
+	    
+        ; Got level4 stuff!
+        move.w	#1,psb_IntVecAudFlag(a6)
+.1		
+        lea	CiabName,a1	; Open Cia Resource
 		moveq	#0,d0
 		move.l	a6,-(a7)
 		CALLEXEC	OpenResource
 		move.l	(a7)+,a6
 		move.l	d0,_CiabBase
-		beq.s	.error
+		beq 	.error
 
 		tst.w	psb_TimerAFlag(a6)
 		bne.s	.2
+
+        * Skip this timer (envelopes) if not in normal mode
+        tst.w   psb_OperatingMode(a6)
+        bne     .2
+
 		lea	timerAIntr,a1	; Allocate Timers
 		moveq	#CIAICRB_TA,d0
 		move.l	a6,-(a7)
@@ -4025,6 +4787,13 @@ OpenIRQ		move.l	a6,timerAIntrPSB
 
 .2		tst.w	psb_TimerBFlag(a6)
 		bne.s	.3
+
+        * Skip this timer (playback) if reSID
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .3
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        beq.b   .3
+
 		lea	timerBIntr,a1
 		moveq	#CIAICRB_TB,d0
 		move.l	a6,-(a7)
@@ -4033,11 +4802,20 @@ OpenIRQ		move.l	a6,timerAIntrPSB
 		tst.l	d0
 		bne.s	.error
 		move.w	#1,psb_TimerBFlag(a6)
-
-.3		bsr	PlayDisable
+.3		
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .reSID
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        beq.b   .reSID
+        bra.b   .5    
+.reSID
+        jsr     createResidWorkerTask
+.5
+        bsr	PlayDisable
 		moveq	#0,d0
 		rts
-.error		bsr	CloseIRQ
+.error		
+        bsr	CloseIRQ
 		moveq	#SID_NOCIATIMER,D0
 		rts
 
@@ -4084,15 +4862,25 @@ CloseIRQ	tst.w	psb_TimerBFlag(a6)
 		move.l	(a7)+,a6
 		move.w	#0,psb_IntVecAudFlag(a6)
 .3
-		rts
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .resid
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        beq.b   .resid
+        rts
+.resid
+        jsr     stopResidWorkerTask
+        rts
 
 *-----------------------------------------------------------------------*
 InitTimers
-		bsr	StopTimerA
 		move.w	psb_TimerConstA(a6),d0		; ~700
+        tst.w   psb_OperatingMode(a6)
+        bne.b   .1
+		bsr	StopTimerA
 		bsr	SetTimerA
 		bsr	StartTimerA
-		bsr	StopTimerB
+.1		
+        bsr	StopTimerB
 		move.w	psb_TimerConstB(a6),d0		; ~14000
 		bsr	SetTimerB
 		bsr	StartTimerB
@@ -4116,9 +4904,12 @@ SetTimerB
 
 *-----------------------------------------------------------------------*
 StopTimerA
+        tst.w   psb_OperatingMode(a6)
+        bne.b   .1
 		lea	_ciab,a0
 		and.b	#CIACRAF_TODIN+CIACRAF_SPMODE+CIACRAF_OUTMODE+CIACRAF_PBON,ciacra(a0)	; Timer A Cia B
 		bclr	#CIACRAB_START,ciacra(a0)
+.1
 		rts
 
 *-----------------------------------------------------------------------*
@@ -4143,7 +4934,8 @@ StartTimerB
 *-----------------------------------------------------------------------*
 PlayDisable					;Turns off all Audio
 		bsr	StopTimerB
-		lea	_custom,a0
+        tst.w   psb_OperatingMode(a6)
+        bne.b   .1
 		move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTENA(a0)
 		move.w	#INTF_AUD0+INTF_AUD1+INTF_AUD2+INTF_AUD3,INTREQ(a0)
 		move.w	#DMAF_AUD0+DMAF_AUD1+DMAF_AUD2+DMAF_AUD3,DMACON(a0)
@@ -4158,8 +4950,10 @@ PlayDisable					;Turns off all Audio
 		move.w	d0,AUD1VOL(a0)
 		move.w	d0,AUD2VOL(a0)
 		move.w	d0,AUD3VOL(a0)
-		bsr	mute_sid
-		rts
+.1
+        cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
+        beq     mute_sid
+        rts
 
 *-----------------------------------------------------------------------*
 * The registers when called as an interrupt handler:
@@ -4181,15 +4975,18 @@ PlayDisable					;Turns off all Audio
 timerAServer	equ	Envelopes		; Do Envelopes
 
 *-----------------------------------------------------------------------*
-timerBServer	CALLEXEC 	Cause		; Ready for Player
+timerBServer	
+        CALLEXEC 	Cause		; Ready for Player
 		moveq	#0,d0			; A1=softwIntr
 		rts
 
 *-----------------------------------------------------------------------*
 softwServer	move.l	a6,-(a7)		; Play it..
+        cmp.w   #PM_PLAY,psb_PlayMode(a1)
+        bne.b   .x
 		move.l	a1,a6
-		bsr	Play64
-		move.l	(a7)+,a6
+        bsr     Play64
+.x      move.l	(a7)+,a6
 		moveq	#0,d0
 		rts
 
@@ -4617,7 +5414,22 @@ SelectNewVolume
 EndOfLibrary
 
 @FreeEmulAudio	jmp	@FreeEmulAudio_impl.l
-@AllocEmulAudio	jmp	@AllocEmulAudio_impl.l
+
+@AllocEmulAudio	
+        cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
+        beq.b   .3
+        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+        beq.b   .1
+        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+        bne.b   .2
+.1      cmp.w   #REM_AHI,psb_ResidMode(a6)
+        bne.b   .2 
+        * No audio alloc when AHI in use
+.3
+        moveq   #0,d0 * no error
+        rts
+.2
+        jmp	@AllocEmulAudio_impl.l
 
 *=======================================================================*
 *                                                                       *
@@ -4667,7 +5479,6 @@ level4Intr4	dc.l	0		; Audio Interrupt
 		dc.l	level4Name4
 level4Intr4Data	dc.l	0
 		dc.l	level4Handler4
-
 timerAIntr	dc.l	0		; Envelope
 		dc.l	0
 		dc.b	2
@@ -7136,5 +7947,1698 @@ AttackTable	ds.l	$100
 _CiabBase	ds.l	1
 _PlaySidBase	ds.l	1
 
+; reSID data areas for two instances
+residData      ds.b    resid_SIZEOF
+residData2     ds.b    resid_SIZEOF
+
 *-----------------------------------------------------------------------*
+
+
 		include	external.asm
+
+*-----------------------------------------------------------------------*
+*
+* reSID-68k 
+*
+*-----------------------------------------------------------------------*
+
+        section    reSID1,code
+
+  ifd __VASM
+    ; Turn on optimization for reSID
+    opt o+
+    ; Disable "move.l to moveq" optimization, it may add "swap" which is
+    ; pOEP-only
+    opt o4-
+  endif
+
+        include resid-68k.s
+
+        section    reSID2,code
+
+
+@SetVolume 
+    move    d0,psb_Volume(a6)
+    cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+    beq.b   .1
+    cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+    beq.b   .1
+    rts
+.1
+    push    d0
+    move.l  psb_reSID(a6),a0
+    jsr     sid_set_volume
+    pop     d0
+
+    move.l  psb_reSID2(a6),a0
+    jmp     sid_set_volume
+    
+* In:
+*   d0 = 0 for 6581, 1 for 8580
+@SetResidChipModel
+    move.b  d0,d1
+    moveq   #CHIP_MODEL_MOS6581,d0
+    tst.b   d1
+    beq     .1
+    moveq   #CHIP_MODEL_MOS8580,d0
+.1  
+    push    d0
+    move.l  psb_reSID(a6),a0
+    jsr     sid_set_chip_model
+    pop     d0
+
+    move.l  psb_reSID2(a6),a0
+    jmp     sid_set_chip_model
+    
+
+* In:
+*   d0 = 0 or 1, disable or enable the filter
+*   d1 = 0 or 1, disable or enable the external filter
+@SetResidFilter
+  if DEBUG
+    and.l   #$ff,d0
+    and.l   #$ff,d1
+    DPRINT  "SetResidFilter internal=%ld external=%ld"
+  endif
+    pushm   d0/d1
+
+    push    d1
+    move.l  psb_reSID(a6),a0
+    jsr     sid_enable_filter
+    pop     d0
+    move.l  psb_reSID(a6),a0
+    jsr     sid_enable_external_filter
+
+    popm    d0/d1
+   
+    push    d1
+    move.l  psb_reSID2(a6),a0
+    jsr     sid_enable_filter
+    pop     d0
+    move.l  psb_reSID2(a6),a0
+    jmp     sid_enable_external_filter
+
+
+* Out:
+*   d0 = buffer length in samples
+*   d1 = period value used
+*   a0 = audio buffer pointer sid
+*   a1 = same as a0 or audio buffer pointer for sid 2
+@GetResidAudioBuffer
+    move.l  sidBufferAHi,a0
+    move.l  a0,a1
+    tst.w   psb_Sid2Address(a6)
+    beq     .1
+    move.l  sid2BufferAHi,a1
+.1
+    move.l  psb_SamplesPerFrame(a6),d0
+    lsr.l   #7,d0
+    move.l  #PAULA_PERIOD,d1
+    rts
+
+
+* Initialize reSID, safe to call whenever.
+* In:
+*    a6 = PlaySID base
+
+initResid:
+    DPRINT  "initResid"
+    movem.l d1-a6,-(sp)
+    move.l  psb_reSID(a6),a0
+    jsr     sid_constructor
+    move.l  psb_reSID2(a6),a0
+    jsr     sid_constructor
+
+
+    moveq   #0,d0
+    move    psb_ResidMode(a6),d0
+    DPRINT  "residmode=%ld"
+
+ if ENABLE_14BIT
+    moveq   #SAMPLING_METHOD_OVERSAMPLE2x14,d1
+    cmp     #REM_OVERSAMPLE2,d0
+    beq.b   .go
+    moveq   #SAMPLING_METHOD_OVERSAMPLE3x14,d1
+    cmp     #REM_OVERSAMPLE3,d0
+    beq.b   .go
+    moveq   #SAMPLING_METHOD_OVERSAMPLE4x14,d1
+    cmp     #REM_OVERSAMPLE4,d0
+    beq.b   .go
+    moveq   #SAMPLING_METHOD_INTERPOLATE14,d1
+    cmp     #REM_INTERPOLATE,d0
+    beq.b   .go
+    
+    
+    moveq   #SAMPLING_METHOD_SAMPLE_FAST16,d1
+    cmp     #REM_AHI,d0
+    beq.b   .go
+    ; Default
+    moveq   #SAMPLING_METHOD_SAMPLE_FAST14,d1
+ else
+    moveq   #SAMPLING_METHOD_SAMPLE_FAST8,d1
+ endif
+.go
+
+ if DEBUG
+    moveq   #0,d0
+    move.b  d1,d0
+    DPRINT  "sampling method=%ld"
+ endif
+    * d1 = sampling method
+    move.l  #985248,d0
+    move.l  #PAULA_PERIOD,d2
+    pushm   d0-d2
+    move.l  psb_reSID(a6),a0
+    jsr     sid_set_sampling_parameters_paula
+    move.l  a1,clockRoutine
+
+ if DEBUG
+    push    d0
+    move.l  a1,d0
+    DPRINT  "clockRoutine=%lx"
+    pop     d0
+ endif
+
+    popm    d0-d2
+    move.l  psb_reSID2(a6),a0
+    jsr     sid_set_sampling_parameters_paula
+
+    * Initial value for cyclesPerFrame, 50 Hz
+    tst.w   psb_TimerConstB(a6)
+    bne     .2
+    move.w  #28419/2,psb_TimerConstB(a6)
+.2  bsr     calcSamplesAndCyclesPerFrameFromCIATicks
+
+    move.l  psb_reSID(a6),a0
+    jsr     sid_reset
+    move.l  psb_reSID2(a6),a0
+    jsr     sid_reset
+
+    moveq   #CHIP_MODEL_MOS6581,d0
+    cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+    beq.b   .1
+    cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+    bne.b   .1
+    moveq   #CHIP_MODEL_MOS8580,d0
+.1
+    push    d0
+    move.l  psb_reSID(a6),a0
+    jsr     sid_set_chip_model
+    pop     d0
+    move.l  psb_reSID2(a6),a0
+    jsr     sid_set_chip_model
+
+    moveq   #0,d0
+    move.l  psb_reSID(a6),a0
+    jsr     sid_enable_external_filter
+    DPRINT  "extfilter disabled by default"
+
+    moveq   #0,d0
+    move.l  psb_reSID2(a6),a0
+    jsr     sid_enable_external_filter
+
+    movem.l (sp)+,d1-a6
+    rts
+
+* Assuming Paula playback period 128, given the amount of CIA
+* timer ticks, calculates how many audio samples and SID cycles
+* the amount of ticks corresponds to. This defines both the
+* audio interrupt interval and timing for the playback.
+* May be called from interrupt.
+* in:
+*   a6 = PlaySidBase
+calcSamplesAndCyclesPerFrameFromCIATicks:
+    cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+    beq.b   .go
+    cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+    beq.b   .go
+    rts
+.go
+      movem.l d0-d2/a0,-(sp)
+; Freq in Hz =  709379.1 / (28419/2) = 49.9228
+; samples per frame = 27710.1171875 /(709379.1 / (28419/2) )
+; samples per frame = (27710.1171875 * (28419/2)) / 709379.1 
+; r/(c/t) -> r*t/c -> (r/c)*t
+; 27710.1171875 / 709379.1 = 0.03906249449342389704 
+; 0.03906249449342389704*(1<<10) = 39.99999436126607056791
+* 0.03906249449342389704*(1<<7)  = 4.99999929515825882112 = 5!
+; cia ticks * 40 = samples per frame 22.10 FP
+; cia ticks * 5  = samples per frame 25.7 FP
+
+    * Safety check: check if higher than 600 Hz in case of spurious
+    * or NULL values, and revert to 50 Hz. 1178 = 600 Hz
+    move.w  psb_TimerConstB(a6),d0   
+    cmp.w   #1170,d0
+    bhi.b   .1
+    move    #28419/2,d0
+.1
+    mulu.w  #5,d0
+    * d0 = samples per frame 25.7 FP
+    move.l  d0,psb_SamplesPerFrame(a6)
+
+    ;cycles_per_sample = clock_freq / sample_freq * (1 << FIXP_SHIFT) + 0.5);
+    
+    * Calculate how many cycles are needed per frame
+    * samples per frame is 25.7 FP 
+    * sid_cycles_per_sample is 16.16 FP
+    move.l  psb_reSID(a6),a0
+    move.l  sid_cycles_per_sample(a0),d1
+    bsr     mulu_64
+    * Shift result by 16+7 for correct FP
+    moveq   #16+7,d2
+    lsr.l   d2,d1
+    moveq   #32-16-7,d2
+    lsl.l   d2,d0
+    or.l    d1,d0    
+ REM
+    * 64-bit instructions avoided
+    mulu.l  sid_cycles_per_sample(a0),d1:d0
+    divu.l  #1<<(16+7),d1:d0
+ EREM
+    move.l  d0,cyclesPerFrame
+    movem.l (sp)+,d0-d2/a0
+    rts
+
+
+;umult64 - mulu.l d0,d0:d1
+;by Meynaf/English Amiga Board
+mulu_64
+     move.l d2,-(a7)
+     move.w d0,d2
+     mulu d1,d2
+     move.l d2,-(a7)
+     move.l d1,d2
+     swap d2
+     move.w d2,-(a7)
+     mulu d0,d2
+     swap d0
+     mulu d0,d1
+     mulu (a7)+,d0
+     add.l d2,d1
+     moveq #0,d2
+     addx.w d2,d2
+     swap d2
+     swap d1
+     move.w d1,d2
+     clr.w d1
+     add.l (a7)+,d1
+     addx.l d2,d0
+     move.l (a7)+,d2
+ 	rts
+
+
+
+* Out:
+*    d0 = 0: out of mem, non-1: ok
+allocResidMemory:
+    push   a6
+    cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
+    beq.b   .z
+    cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+    bne.b   .y
+.z
+    move.l  a6,a0
+    * Allocate audio buffers
+    * Two per 14-bit channel
+    * Times two for double buffering
+    * Times two for two SIDs
+    move.l  #(SAMPLE_BUFFER_SIZE)*8,d0
+  
+    move.l  #MEMF_CHIP!MEMF_CLEAR,d1
+    cmp.w   #REM_AHI,psb_ResidMode(a0)
+    bne     .2
+    * AHI buffers can be in public mem
+    move.l  #MEMF_PUBLIC!MEMF_CLEAR,d1
+.2
+    move.l  4.w,a6
+    jsr     _LVOAllocMem(a6)
+    tst.l   d0
+    beq     .x
+
+    move.l  d0,a0
+    move.l  a0,bufferMemoryPtr
+    move.l  a0,a2
+    lea     sidBufferAHi(pc),a1
+    moveq   #8-1,d0
+.1  move.l  a0,(a1)+
+    lea     SAMPLE_BUFFER_SIZE(a0),a0
+    dbf     d0,.1
+
+    * Also set up ahi sounds, these are word buffers
+    move.l  #SAMPLE_BUFFER_SIZE*2,d0
+    lea     ahiSound1(pc),a0
+    move.l  a2,4(a0)
+    move.l  d0,8(a0)
+    add.l   d0,a2
+    lea     ahiSound2(pc),a0
+    move.l  a2,4(a0)
+    move.l  d0,8(a0)
+    add.l   d0,a2
+    lea     ahiSound3(pc),a0
+    move.l  a2,4(a0)
+    move.l  d0,8(a0)
+    add.l   d0,a2
+    lea     ahiSound4(pc),a0
+    move.l  a2,4(a0)
+    move.l  d0,8(a0)
+
+.y  moveq   #1,d0
+.x  tst.l   d0
+    pop     a6
+    rts
+
+resetResid:
+    move.l  psb_reSID(a6),a0
+    jsr     sid_reset
+    move.l  psb_reSID2(a6),a0
+    jmp     sid_reset
+
+
+freeResidMemory:
+    push    a6
+    lea     bufferMemoryPtr(pc),a2
+    tst.l   (a2)
+    beq.b   .y
+    move.l  (a2),a1
+    clr.l   (a2)
+    move.l  #(SAMPLE_BUFFER_SIZE)*8,d0
+    move.l  4.w,a6
+    jsr     _LVOFreeMem(a6)
+.y  pop     a6
+    rts
+
+createResidWorkerTask:
+    DPRINT  "createResidWorkerTask"
+    movem.l d0-a6,-(sp)
+    tst.l   residWorkerTask
+    bne     .x
+    move.l  a6,a5
+
+    move.l  4.w,a6
+    sub.l   a1,a1
+    jsr     _LVOFindTask(a6)
+    move.l  d0,mainTask
+
+    moveq   #0,d0
+    moveq   #SIGF_SINGLE,d1
+    jsr     _LVOSetSignal(a6)
+
+    move.l  psb_DOSBase(a5),a6
+    move.l  #.tags,d1
+    jsr     _LVOCreateNewProcTagList(a6)
+
+    * Wait here until the task is fully running
+    moveq   #SIGF_SINGLE,d0
+    jsr     _LVOWait(a6)
+.x
+    movem.l (sp)+,d0-a6
+    rts
+
+.tags
+    dc.l    NP_Entry,residWorkerEntryPoint
+    dc.l    NP_Name,.workerTaskName
+    dc.l    TAG_END
+
+.workerTaskName
+    dc.b    "reSID",0
+    even
+
+stopResidWorkerTask:    
+    DPRINT  "stopResidWorkerTask"    
+    movem.l d0-a6,-(sp)
+    tst.l   residWorkerTask
+    beq     .done
+
+    move.l  4.w,a6
+    moveq   #0,d0
+    moveq   #SIGF_SINGLE,d1
+    jsr     _LVOSetSignal(a6)
+
+    ; Send a break to the worker
+    move.l  residWorkerTask(pc),a1
+    move.l  #SIGBREAKF_CTRL_C,d0
+    jsr     _LVOSignal(a6)
+
+    ; Wait for confirmation
+    moveq   #SIGF_SINGLE,d0
+    jsr     _LVOWait(a6)
+
+ if COUNTERS
+    jsr     sid_get_counters
+    lea     -20(sp),sp
+.cl
+    * 4char id
+    move.l  8(a2),(sp)
+    clr.b   4(sp)
+    move.l  sp,d0
+
+    * Count
+    move.l  (a2),d1
+    move.l  4(a2),d2
+    add     #12,a2
+
+    DPRINT  "%s=0x%08.8lx%08.8lx"
+
+    dbf     d3,.cl
+   
+    lea     20(sp),sp
+ endif
+
+.done 
+    movem.l (sp)+,d0-a6
+    rts
+
+
+* Playback task
+residWorkerEntryPoint
+    SPRINT  "task:starting"
+    move.l  4.w,a6
+    sub.l   a1,a1
+    jsr     _LVOFindTask(a6)
+    move.l  d0,residWorkerTask
+
+    move.l  _PlaySidBase,a6
+    cmp.w   #REM_AHI,psb_ResidMode(a6)
+    bne     .notAhi
+
+    bsr     ahiInit
+    SPRINT  "task:ahiInit=%ld"
+    ; TODO: ERROR case
+    tst.l   d0
+    beq     .x
+    clr.l   psb_AhiBankLeft(a6)
+    clr.l   psb_AhiBankRight(a6)
+    bsr     ahiSwitchAndFillLeftBuffer
+    bsr     ahiSwitchAndFillRightBuffer
+	moveq	#AHISF_IMM,d4
+    bsr     ahiPlayLeftBuffer
+    DPRINT  "task:left=%ld"
+	moveq	#AHISF_IMM,d4
+    bsr     ahiPlayRightBuffer
+    DPRINT  "task:right=%ld"
+    bra     .continue
+
+.notAhi
+    SPRINT  "task:normal init"
+
+ ifne ENABLE_LEV4PLAY 
+    move.l  #residLevel1Intr,residLevel4Intr1Data
+ else
+    move.l  d0,residLevel4Intr1Data
+ endif
+    * Max softint priority
+    move.b  #32,LN_PRI+residLevel1Intr
+    * Store this for easy access
+    move.l  _PlaySidBase,residLevel1Data
+
+    SPRINT  "task:clear intena+intreq+dmacon"
+    ; Stop all 
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
+    move.w  #DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
+
+ if DEBUG
+    move.l  #residLevel1HandlerDebug,residLevel1HandlerPtr
+ else
+    move.l  #residLevel1Handler,residLevel1HandlerPtr
+    tst.w   psb_Debug(a6)
+    beq     .1
+    move.l  #residLevel1HandlerDebug,residLevel1HandlerPtr
+.1
+ endif
+    SPRINT  "task:SetIntVector"
+
+    lea     residLevel4Intr1,a1
+    moveq   #INTB_AUD0,d0		; Allocate Level 4
+    move.l  4.w,a6
+    jsr     _LVOSetIntVector(a6)
+    move.l  d0,oldVecAud0
+
+    move.l  _PlaySidBase,a6
+
+    * CH0 = high 8 bits - full volume
+    * CH3 = low 6 bits  - volume 1
+    * CH1 = high 8 bits - full volume
+    * CH2 = low 6 bits  - volume 1
+    move    #PAULA_PERIOD,$a6+$dff000
+    move    #PAULA_PERIOD,$b6+$dff000
+    move    #PAULA_PERIOD,$c6+$dff000
+    move    #PAULA_PERIOD,$d6+$dff000
+    
+    bsr     residSetVolume
+    bsr     switchAndFillBuffer
+    bsr     dmawait     * probably not needed
+
+    SPRINT  "task:enable audio interrupt"
+
+  ifne ENABLE_14BIT
+    move    #DMAF_SETCLR!DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
+  else
+    move    #DMAF_SETCLR!DMAF_AUD0!DMAF_AUD1,dmacon+$dff000
+  endif
+   
+    move.w  #INTF_SETCLR!INTF_AUD0,intena+$dff000
+
+    ; buffer A now plays
+    ; interrupt will be triggered soon to queue the next sample
+    ; wait for the interrupt and queue buffer B
+    ; fill buffer B
+    ; after A has played, B will start
+    ; interrupt will be triggered
+    ; queue buffer A
+    ; fill A
+    ; ... etc
+.continue
+    ; Signal that we're running
+    move.l  4.w,a6
+    move.l  mainTask(pc),a1
+    moveq   #SIGF_SINGLE,d0
+    jsr     _LVOSignal(a6)
+
+    SPRINT  "task:active"
+.loop
+    move.l  #SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D,d0
+    jsr     _LVOWait(a6)
+
+    and.l   #SIGBREAKF_CTRL_C,d0
+    bne.b   .x
+
+  ifeq ENABLE_LEV4PLAY
+    push    a6
+    move.l  _PlaySidBase,a6
+    bsr     switchAndFillBuffer
+    pop     a6
+  endif
+    bra     .loop
+
+.x
+    SPRINT  "task:stopping"
+
+    move.l  _PlaySidBase,a6
+    cmp.w   #REM_AHI,psb_ResidMode(a6)
+    bne     .notAhi2
+    bsr     ahiStop
+
+    DPRINT  "task:ahi stopped"
+    
+    move.l  4.w,a6
+    jsr     _LVOForbid(a6)
+    jsr     _LVODisable(a6)
+    bra     .continueExit
+
+.notAhi2
+    move.l  4.w,a6
+    jsr     _LVOForbid(a6)
+    jsr     _LVODisable(a6)
+
+    ; First stop audio interrupt, as stopping DMA first would go into
+    ; manual mode and start triggering audio interrupts after every word.
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
+    move    #$f,dmacon+$dff000
+    bsr     residClearVolume
+
+    moveq	#INTB_AUD0,d0
+    move.l  oldVecAud0(pc),a1
+    jsr     _LVOSetIntVector(a6)
+    move.l  d0,oldVecAud0
+
+.continueExit
+    clr.l   residWorkerTask
+
+    move.l  mainTask(pc),a1
+    moveq   #SIGF_SINGLE,d0
+    jsr     _LVOSignal(a6)
+    SPRINT  "task:stopped"
+    rts
+
+residSetVolume:
+  ifne ENABLE_14BIT
+    move    #64,$a8+$dff000
+    move    #1,$d8+$dff000
+    move    #64,$b8+$dff000
+    move    #1,$c8+$dff000
+  else
+    move    #64,$a8+$dff000
+    move    #0,$d8+$dff000
+    move    #64,$b8+$dff000
+    move    #0,$c8+$dff000   
+  endif
+    rts
+
+residClearVolume:
+    clr     $dff0a8
+    clr     $dff0b8
+    clr     $dff0c8
+    clr     $dff0d8
+    rts
+
+
+;  Interrupt register usage
+;  D0 - scratch
+;  D1 - scratch (on entry: active
+;       interrupts -> equals INTENA & INTREQ)
+;  A0 - scratch (on entry: pointer to base of custom chips
+;       for fast indexing)
+;  A1 - scratch (on entry: Interrupt's IS_DATA pointer)
+;  A5 - jump vector register (scratch on call)
+;  A6 - Exec library base pointer (scratch on call)
+;       all other registers must be preserve
+;       Softints must preserve a6
+
+* Level 4 interrupt handler
+* In:
+*   a0 = custom
+*   a1 = is_data
+*   a6 = execbase
+residLevel4Handler1
+    move.w  #INTF_AUD0,intreq(a0)
+ ifeq ENABLE_LEV4PLAY
+    * a1 = task
+    move.l  #SIGBREAKF_CTRL_D,d0
+    jmp     _LVOSignal(a6)
+ else
+    * a1 = residLevel1Intr
+    basereg residLevel1Intr,a1
+    
+    * Check if lev1 is done with the previous frame
+    tst.b   framePending(a1)
+    beq.b   .1
+ ifne DEBUG
+    ;move    #$f00,$dff180
+ endif
+    rts
+.1
+    * Start processing a new frame
+    st      framePending(a1)
+    jmp     _LVOCause(a6)
+    endb    a1
+ endif
+
+
+* Level 1 interrupt handler, debug colors
+* In:
+*    a1 = IS_Data = PlaySidBase
+residLevel1HandlerDebug:
+    move    #$ff0,$dff180
+    bsr.b   residLevel1Handler
+    clr     $dff180
+   	rts
+
+* Level 1 interrupt handler
+* In:
+*    a1 = IS_Data = PlaySidBase
+residLevel1Handler:
+   	movem.l d2-d7/a2-a4/a6,-(sp)
+    move.l  a1,a6
+    cmp.w   #PM_PLAY,psb_PlayMode(a6)
+    bne.b   .x
+    jsr     Play64
+.x
+    bsr.b   switchAndFillBuffer
+    clr.w   framePending
+   	movem.l (sp)+,d2-d7/a2-a4/a6
+    rts
+
+* in:
+*   a6 = PlaySidBase
+switchAndFillBuffer:
+    lea     sidBufferAHi(pc),a0
+
+    tst.w   psb_Sid2Address(a6)
+    bne.b   .sid2
+
+    basereg sidBufferAHi,a0
+    * Swap SID buffers A and B
+    movem.l sidBufferAHi(a0),d0/d1/a1/a2
+    movem.l d0/d1,sidBufferBHi(a0)
+    movem.l a1/a2,sidBufferAHi(a0)
+    endb    a0
+
+    move.l  a1,$a0+$dff000 
+    move.l  a2,$d0+$dff000 
+    move.l  a1,$b0+$dff000 
+    move.l  a2,$c0+$dff000 
+ 
+    move.l   psb_reSID(a6),a0
+    * output buffer pointers a1 and a2 set above
+    move.l  cyclesPerFrame(pc),d0
+    * buffer size limit
+    move.l  #SAMPLE_BUFFER_SIZE,d1
+    move.l  clockRoutine(pc),a3
+    jsr     (a3)
+    * d0 = bytes received, make words
+    * rounds down, so may discard one byte
+
+    lsr     #1,d0
+    move    d0,$a4+$dff000   * words
+    move    d0,$d4+$dff000   * words
+    move    d0,$b4+$dff000   * words
+    move    d0,$c4+$dff000   * words
+    rts
+
+.sid2
+    basereg sidBufferAHi,a0
+    * Swap SID buffers A and B
+    movem.l sidBufferAHi(a0),d0/d1/a1/a2/a3/a4/a5/a6
+    movem.l d0/d1,sidBufferBHi(a0)
+    movem.l a1/a2,sidBufferAHi(a0)
+
+    * Swap SID2 buffers A and B
+    movem.l a3/a4,sid2BufferBHi(a0)
+    movem.l a5/a6,sid2BufferAHi(a0)
+    endb    a0
+
+    move.l  a1,$a0+$dff000 
+    move.l  a2,$d0+$dff000 
+    move.l  a3,$b0+$dff000 
+    move.l  a4,$c0+$dff000 
+ 
+    ; SID 1
+
+    movem.l sidBufferAHi(pc),a1/a2
+    move.l  cyclesPerFrame(pc),d0
+    * buffer size limit
+    move.l  #SAMPLE_BUFFER_SIZE,d1
+    move.l  clockRoutine(pc),a3
+    lea     residData,a0
+    jsr     (a3)
+
+    ; SID 2
+
+    movem.l sid2BufferBHi(pc),a1/a2
+    move.l  cyclesPerFrame(pc),d0
+    * buffer size limit
+    move.l  #SAMPLE_BUFFER_SIZE,d1
+    move.l  clockRoutine(pc),a3
+    lea     residData2,a0
+    jsr     (a3)
+
+    * d0 = bytes received, make words
+    * rounds down, so may discard one byte
+    lsr     #1,d0
+    move    d0,$a4+$dff000   * words
+    move    d0,$d4+$dff000   * words
+    move    d0,$b4+$dff000   * words
+    move    d0,$c4+$dff000   * words
+    rts
+
+
+
+dmawait
+	movem.l d0/d1,-(sp)
+	moveq	#12-1,d1
+.d	move.b	$dff006,d0
+.k	cmp.b	$dff006,d0
+	beq.b	.k
+	dbf	d1,.d
+	movem.l (sp)+,d0/d1
+	rts
+
+
+* Calculates four frames of sound and measures the time taken.
+* In:
+*   d0 = reSID mode to test, RM_NORMAL... etc
+*   d1 = Enable filter
+*   d2 = Enable extfilter
+* Out:
+*   d0 = millisecs taken
+*   d1 = reference value 
+@MeasureResidPerformance:
+    movem.l d2-d7/a2-a6,-(sp)
+    * Stuff filter settings into d5 for later
+    move.b  d1,d5
+    lsl     #8,d5
+    move.b  d2,d5
+
+    moveq   #SAMPLING_METHOD_OVERSAMPLE2x14,d4
+    cmp.b   #REM_OVERSAMPLE2,d0
+    beq.b   .go
+
+    moveq   #SAMPLING_METHOD_OVERSAMPLE3x14,d4
+    cmp.b   #REM_OVERSAMPLE3,d0
+    beq.b   .go
+
+    moveq   #SAMPLING_METHOD_OVERSAMPLE4x14,d4
+    cmp.b   #REM_OVERSAMPLE4,d0
+    beq.b   .go
+
+    moveq   #SAMPLING_METHOD_INTERPOLATE14,d4
+    cmp.b   #REM_INTERPOLATE,d0
+    beq.b   .go
+
+    * Default measuring mode
+    moveq   #SAMPLING_METHOD_SAMPLE_FAST14,d4
+.go
+  if DEBUG
+    and.l   #$ff,d0
+    move.l  d4,d1
+    DPRINT  "MeasureResidPerformance REM=%ld METHOD=%ld"
+  endif
+
+    ;----------------------------------
+    moveq   #-1,d7
+    move.l	4.w,a6
+    move	LIB_VERSION(a6),d0
+    cmp     #36,d0
+    blo     .x
+    ;----------------------------------
+    lea     timerDeviceName(pc),a0
+    moveq	#UNIT_ECLOCK,d0
+    moveq	#0,d1
+    lea     timerRequest(pc),a1
+    jsr	    _LVOOpenDevice(a6)		; d0=0 if success
+    tst.l	d0
+    bne     .error
+    ;----------------------------------
+    moveq   #0,d6
+    move.l  #(4*SAMPLE_BUFFER_SIZE),d0
+    move.l  #MEMF_CHIP!MEMF_CLEAR,d1
+    jsr     _LVOAllocMem(a6)
+    tst.l   d0
+    beq     .error2
+    move.l  d0,d6
+    ;----------------------------------
+    lea     residData,a0
+    jsr	    sid_constructor
+    
+    move.l  #985248,d0
+    move.b  d4,d1       * select sampling mode
+    move.l  #PAULA_PERIOD,d2
+    lea     residData,a0
+    jsr     sid_set_sampling_parameters_paula
+    move.l  a1,a4       * grab the clock routine
+    
+    move.b  d5,d0
+ if DEBUG
+    and.l   #$ff,d0
+    DPRINT  "Perf: extfilter=%ld"
+ endif
+    lea     residData,a0
+    jsr     sid_enable_external_filter
+    lsr     #8,d5
+    move.b  d5,d0
+ if DEBUG
+    and.l   #$ff,d0
+    DPRINT  "Perf: filter=%ld"
+ endif
+    lea     residData,a0
+    jsr     sid_enable_filter
+
+
+ if DEBUG
+    move.l  d4,d0
+    move.l  a1,d1
+    DPRINT  "samplingMode=%ld clockRoutine=%lx"
+ endif
+
+    move.l  #SAMPLES_PER_FRAME_200Hz,d0
+    lea     residData,a0
+    mulu.l  sid_cycles_per_sample(a0),d1:d0
+    * Shift by 16 and 10 to get the FP to 
+    * the correct position
+    divu.l  #1<<(16+10),d1:d0
+    move.l  d0,d5
+    DPRINT  "cycles per frame=%ld"
+
+    ;----------------------------------
+
+    move.l  4.w,a6
+    jsr     _LVOForbid(a6)
+
+    lea     clockStart(pc),a0
+    move.l	IO_DEVICE+timerRequest(pc),a6
+    jsr     _LVOReadEClock(a6)
+
+    ;----------------------------------
+
+    move.l  d6,-(sp)
+    * Write both 14-bit bytes into same buffer, doesn't matter here
+    move.l  d6,a1   * output buffer high byte
+    move.l  d6,a2   * output buffer low byte
+    move.l  d5,d0  * cycles
+    lsl.l   #2,d0  * do 4 frames
+    move.l  #(4*SAMPLE_BUFFER_SIZE),d1 * buffer limit
+    lea     residData,a0
+    jsr     (a4)    * call clock routine
+    move.l  (sp)+,d6
+
+    ;----------------------------------
+
+    lea     clockEnd(pc),a0
+    move.l	IO_DEVICE+timerRequest(pc),a6
+    jsr     _LVOReadEClock(a6)
+
+    move.l  d0,-(sp)
+    move.l  4.w,a6
+    jsr     _LVOPermit(a6)
+    move.l  (sp)+,d0
+
+    ;----------------------------------
+
+     * D0 will be 709379 for PAL.
+	move.l	d0,d2
+	; d2 = ticks/s
+	divu	#10000,d2
+	; d2 = ticks/10ms
+	ext.l	d2
+	
+    ; Calculate diff between start and stop times
+	; in 64-bits
+	move.l	EV_HI+clockEnd(pc),d0
+	move.l	EV_LO+clockEnd(pc),d1
+	move.l	EV_HI+clockStart(pc),d3
+	sub.l	EV_LO+clockStart(pc),d1
+	subx.l	d3,d0
+
+	; Turn the diff into millisecs
+	; Divide d0:d1 by d2
+	divu.l  d2,d0:d1
+   ; d0:d1 is now d0:d1/d2
+	; take the lower 32-bits
+    move.l  d1,d7
+
+    ;----------------------------------
+
+    lea     residData,a0
+    jsr     sid_reset
+
+.error2
+    ;----------------------------------
+
+    lea     timerRequest(pc),a1
+    move.l  4.w,a6
+    jsr     _LVOCloseDevice(a6)
+
+    tst.l   d6
+    beq.b   .x
+    move.l  d6,a1
+    move.l  #(4*SAMPLE_BUFFER_SIZE),d0
+    jsr     _LVOFreeMem(a6)
+.x
+    move.l  d7,d0
+    move.l  #200,d1 * reference value
+    movem.l (sp)+,d2-d7/a2-a6
+    rts
+.error
+    bra     .x
+
+
+timerDeviceName dc.b	"timer.device",0
+	even
+
+
+
+* Frame $b from "Advanced Chemistry"
+pokeSound:
+    move.b  #$00,d0
+    move.b  #$15,d1 * fc_lo
+    bsr     .write
+;   000b 1601 000b 17f1 
+    move.b  #$01,d0
+    move.b  #$16,d1 * fc_hi
+    bsr     .write
+    move.b  #$f1,d0 * res=f, filter voice 1
+    move.b  #$17,d1 * res_filt
+    bsr     .write
+;00000420:   186f   0507   06a2   0200  ...o............
+    move.b  #$6f,d0 * filter mode=6 (hp+bp), vol=f
+    move.b  #$18,d1 * mode_vol
+    bsr     .write
+    move.b  #$07,d0 * attack=0, decay=7
+    move.b  #$05,d1 * v1 attack decay
+    bsr     .write
+    move.b  #$a2,d0 * sustain=a, release=2
+    move.b  #$06,d1 * v1 sustain release
+    bsr     .write
+    move.b  #$00,d0
+    move.b  #$02,d1 * v1 pw lo
+    bsr     .write
+;00000430:   0387   0043   0103   0441  .......C.......A
+    move.b  #$87,d0
+    move.b  #$03,d1 * v1 pw hi
+    bsr     .write
+    move.b  #$43,d0
+    move.b  #$00,d1 * v1 freq lo
+    bsr     .write
+    move.b  #$03,d0
+    move.b  #$01,d1 * v1 freq hi
+    bsr     .write
+    move.b  #$41,d0 * gate, pulse
+    move.b  #$04,d1 * v1 control
+    bsr     .write
+;00000440:   0c00   0d64   0900   0a84  .......d........
+    move.b  #$00,d0 * attack=0, decay=0
+    move.b  #$0c,d1 * v2 attack decay
+    bsr     .write
+    move.b  #$64,d0 * sustain=6, release=4
+    move.b  #$0d,d1 * v2 sustain release
+    bsr     .write
+    move.b  #$00,d0
+    move.b  #$09,d1 * v2 pw lo
+    bsr     .write
+    move.b  #$84,d0
+    move.b  #$0a,d1 * v2 pw hi
+    bsr     .write
+;00000450:   0714   0827   0b41   1300  .......'...A....
+    move.b  #$14,d0
+    move.b  #$07,d1 * v2 freq lo
+    bsr     .write
+    move.b  #$27,d0
+    move.b  #$08,d1 * v2 freq hi
+    bsr     .write
+    move.b  #$41,d0 * gate, pulse
+    move.b  #$0b,d1 * v2 control
+    bsr     .write
+    move.b  #$00,d0 * attack=0, decay=0
+    move.b  #$13,d1 * v3 attack decay
+    bsr     .write
+;00000460:   14c2   10a0   1180   0e8d  ................
+    move.b  #$c2,d0 * sustain=c, release=2
+    move.b  #$14,d1 * v3 sustain release
+    bsr     .write
+    move.b  #$a0,d0
+    move.b  #$10,d1 * v3 pw lo
+    bsr     .write
+    move.b  #$80,d0
+    move.b  #$11,d1 * v3 pw hi
+    bsr     .write
+    move.b  #$8d,d0
+    move.b  #$0e,d1 * v3 freq lo
+    bsr     .write
+;00000470:   0f3a   1241 
+    move.b  #$3a,d0
+    move.b  #$0f,d1 * v3 freq hi
+    bsr     .write
+    move.b  #$41,d0 * gate, pulse
+    move.b  #$12,d1 * v3 control 
+    bsr     .write
+    rts    
+
+.write  
+    lea     residData,a0
+    jmp     sid_write
+
+
+
+
+
+timerRequest      ds.b    IOTV_SIZE
+clockStart        ds.b    EV_SIZE
+clockEnd          ds.b    EV_SIZE
+cyclesPerFrame    dc.l    0
+clockRoutine      dc.l    0
+bufferMemoryPtr   dc.l    0
+sidBufferAHi      dc.l    0
+sidBufferALo      dc.l    0
+sidBufferBHi      dc.l    0
+sidBufferBLo      dc.l    0
+sid2BufferAHi     dc.l    0
+sid2BufferALo     dc.l    0
+sid2BufferBHi     dc.l    0
+sid2BufferBLo     dc.l    0
+
+mainTask          dc.l    0
+residWorkerTask:  dc.l    0
+oldVecAud0        dc.l    0
+residTimerRequest      ds.b    IOTV_SIZE
+residClock             ds.b    EV_SIZE
+framePending           dc.w    0
+  ifne DEBUG
+bob1
+     dc.w   $0f0
+  endif
+
+
+residLevel4Intr1	
+        dc.l	0		; Audio Interrupt
+        dc.l	0
+        dc.b	2
+        dc.b	0
+        dc.l	residLevel4Name1
+residLevel4Intr1Data:
+        dc.l	0		            ;is_Data
+        dc.l	residLevel4Handler1	;is_Code
+
+residLevel4Name1
+    dc.b    "reSID Audio",0
+    even
+
+residLevel1Intr
+      	dc.l	0
+        dc.l	0
+        dc.b	2
+        dc.b	0
+        dc.l    residLevel4Name1    
+residLevel1Data:
+        dc.l	0
+residLevel1HandlerPtr:
+        dc.l	residLevel1Handler
+
+
+
+
+*-----------------------------------------------------------------------*
+*
+* AHI inteface
+*
+*-----------------------------------------------------------------------*
+
+
+ahiInit:
+    SPRINT  "ahiInit"
+	pushm	all
+
+    move.l  _PlaySidBase,a5
+
+	sub.l	a1,a1
+	move.l	4.w,a6
+	jsr     _LVOFindTask(a6)
+	move.l	d0,psb_AhiTask(a5)
+	SPRINT	"task=%lx"
+
+	OPENAHI	1
+    DPRINT  "base=%lx"
+	move.l	d0,psb_AhiBase(a5)
+    beq	.ahi_error	
+	move.l	d0,a6
+
+    lea     ahiChannels(pc),a0
+    move.l  #1,(a0)
+    tst.w   psb_Sid2Address(a5)
+    beq     .monoMode
+    addq.l  #1,(a0)
+.monoMode
+
+	lea	ahiTags(pc),a1
+	jsr	_LVOAHI_AllocAudioA(a6)
+    DPRINT  "AllocAudio=%lx"
+	move.l	d0,psb_AhiCtrl(a5)
+	beq	.ahi_error
+	move.l	d0,a2
+
+	moveq	#0,d0				;sample 1
+	moveq	#AHIST_DYNAMICSAMPLE,d1
+	lea	ahiSound1(pc),a0
+	jsr	_LVOAHI_LoadSound(a6)
+    DPRINT  "LoadSound=%lx"
+	tst.l	d0
+	bne	.ahi_error
+
+	moveq	#1,d0				;sample 2
+	moveq	#AHIST_DYNAMICSAMPLE,d1
+	lea	ahiSound2(pc),a0
+	jsr	_LVOAHI_LoadSound(a6)
+    DPRINT  "LoadSound=%lx"
+	tst.l	d0
+	bne	.ahi_error
+
+	moveq	#2,d0				;sample 3
+	moveq	#AHIST_DYNAMICSAMPLE,d1
+	lea	ahiSound3(pc),a0
+	jsr	_LVOAHI_LoadSound(a6)
+    DPRINT  "LoadSound=%lx"
+	tst.l	d0
+	bne	.ahi_error
+
+	moveq	#3,d0				;sample 4
+	moveq	#AHIST_DYNAMICSAMPLE,d1
+	lea	ahiSound4(pc),a0
+	jsr	_LVOAHI_LoadSound(a6)
+    DPRINT  "LoadSound=%lx"
+	tst.l	d0
+	bne	.ahi_error
+
+;	move.l	ahiMode(pc),d0
+;	lea	getattr_tags(pc),a1
+;	jsr	_LVOAHI_GetAudioAttrsA(a6)
+;    DPRINT  "GetAudioAttrs=%lx"
+;    move.l  attr_stereo,d0
+;    DPRINT  "stereo=%ld"
+;    move.l  attr_panning,d0
+;    DPRINT  "panning=%ld"
+
+;	bsr	ahi_setmastervol
+;	move	mainvolume+var_b(pc),d0
+;	bsr	vol
+
+
+    ; ---------- Frequency ch1
+    moveq	#0,d0		* channel
+    move.l  #PLAYBACK_FREQ,d1
+	moveq	#AHISF_IMM,d2	* flags
+	move.l	psb_AhiCtrl(a5),a2
+	jsr     _LVOAHI_SetFreq(a6)
+    DPRINT  "SetFreq=%lx"
+
+    ; ---------- Volume ch1
+	moveq	#0,d0		* channel
+    move.l  #$10000,d1  * max volume
+
+    move.l  #$8000,d2   * pan to center
+    tst.w   psb_Sid2Address(a5)
+    beq     .monoPan
+    moveq   #0,d2       * if stereo, max left
+.monoPan
+	moveq	#AHISF_IMM,d3	* flags
+	move.l	psb_AhiCtrl(a5),a2
+	jsr	    _LVOAHI_SetVol(a6)
+    DPRINT  "SetVol=%lx"
+
+    tst.w   psb_Sid2Address(a5)
+    beq     .mono
+
+    ; ---------- Frequency ch2
+	moveq	#1,d0		* channel
+    move.l  #PLAYBACK_FREQ,d1
+	moveq	#AHISF_IMM,d2	* flags
+	move.l	psb_AhiCtrl(a5),a2
+	jsr	_LVOAHI_SetFreq(a6)
+    DPRINT  "SetFreq=%lx"
+
+    ; ---------- Volume ch2
+	moveq	#1,d0		* channel
+    move.l  #$10000,d1  * max volume
+    move.l  #$10000,d2  * pan max right
+	moveq	#AHISF_IMM,d3	* flags
+	move.l	psb_AhiCtrl(a5),a2
+	jsr	_LVOAHI_SetVol(a6)
+    DPRINT  "SetVol=%lx"
+.mono
+
+	lea	ahiCtrlTags(pc),a1
+
+	jsr	_LVOAHI_ControlAudioA(a6)
+    DPRINT  "ControlAudio=%lx"
+	tst.l	d0
+	bne.b	.ahi_error
+
+	popm	all
+    SPRINT  "ahiInit ok"
+	moveq	#1,d0   * ok
+	rts
+
+.ahi_error
+	popm	all
+    SPRINT  "ahiInit error"
+	moveq	#0,d0   * error
+	rts
+
+
+
+* in:
+*   a6 = PlaySidBase
+ahiSwitchAndFillLeftBuffer:
+    eor.w   #1,psb_AhiBankLeft+2(a6)
+    
+    * Select target sound
+    lea     ahiSound1(pc),a3
+    tst.l   psb_AhiBankLeft(a6)
+    beq     .0
+    lea     ahiSound2(pc),a3
+.0  
+    * a1 = output buffer
+    move.l  4(a3),a1
+
+    move.l  cyclesPerFrame(pc),d0
+    move.l  #SAMPLE_BUFFER_SIZE,d1
+    move.l  psb_reSID(a6),a0
+    move.l  clockRoutine(pc),a3
+    jsr     (a3)
+    move.l  _PlaySidBase,a6
+    move.l  d0,psb_AhiSamplesOutLeft(a6)
+    rts
+
+ahiSwitchAndFillRightBuffer:
+    tst.w   psb_Sid2Address(a6)
+    beq     .x
+
+    eor.w   #1,psb_AhiBankRight+2(a6)
+    
+    * Select target sound
+    lea     ahiSound3(pc),a3
+    tst.l   psb_AhiBankRight(a6)
+    beq     .0
+    lea     ahiSound4(pc),a3
+.0  
+    * a1 = output buffer
+    move.l  4(a3),a1
+
+    move.l  cyclesPerFrame(pc),d0
+    move.l  #SAMPLE_BUFFER_SIZE,d1
+    move.l  psb_reSID2(a6),a0
+    move.l  clockRoutine(pc),a3
+    jsr     (a3)
+    move.l  _PlaySidBase,a6
+    move.l  d0,psb_AhiSamplesOutRight(a6)
+.x
+    rts
+
+* in:
+*   d4 = ahi flags
+ahiPlayLeftBuffer:
+	move	#0,d0		* channel
+    move.l  psb_AhiBankLeft(a6),d1  * sound number to play
+	moveq	#0,d2		* offset
+	move.l	psb_AhiSamplesOutLeft(a6),d3	* samples to play 
+	;moveq   #0,d4
+	move.l	psb_AhiCtrl(a6),a2
+    push    a6
+	move.l	psb_AhiBase(a6),a6
+	jsr     _LVOAHI_SetSound(a6)
+    pop     a6
+    rts
+
+* in:
+*   d4 = ahi flags
+ahiPlayRightBuffer:
+    tst.w   psb_Sid2Address(a6)
+    beq     .x
+
+	move	#1,d0		* channel
+    move.l  psb_AhiBankRight(a6),d1  * sound number to play
+    addq.l  #2,d1
+	moveq	#0,d2		* offset
+	move.l	psb_AhiSamplesOutRight(a6),d3		* samples to play 
+	;moveq   #0,d4
+	move.l	psb_AhiCtrl(a6),a2
+    push    a6
+	move.l	psb_AhiBase(a6),a6
+	jsr     _LVOAHI_SetSound(a6)
+    pop     a6
+.x
+    rts
+
+
+
+ahiSound1
+	dc.l	AHIST_M16S	* type
+	dc.l	0	* addr
+	dc.l	0	* len
+
+ahiSound2
+	dc.l	AHIST_M16S
+	dc.l	0	* addr
+	dc.l	0	* len
+
+
+ahiSound3
+	dc.l	AHIST_M16S
+	dc.l	0	* addr
+	dc.l	0	* len
+
+ahiSound4
+	dc.l	AHIST_M16S
+	dc.l	0	* addr
+	dc.l	0	* len
+
+ahiStop:
+    SPRINT  "ahiStop"
+	pushm	all
+    move.l  _PlaySidBase,a5
+
+ 	sub.l	a1,a1
+	move.l	4.w,a6
+	jsr     _LVOFindTask(a6)
+	cmp.l	psb_AhiTask(a5),d0
+	bne 	.x
+
+	move.l	psb_AhiBase(a5),d0
+    beq 	.1
+	move.l	d0,a6
+
+    lea	    ahiStopCtrlTags(pc),a1
+	move.l	psb_AhiCtrl(a5),a2
+	jsr	_LVOAHI_ControlAudioA(a6)
+    DPRINT  "AHI_ControlAudioA=%ld"
+
+	move.l	psb_AhiCtrl(a5),a2
+	jsr	_LVOAHI_FreeAudio(a6)
+	SPRINT	"AHI_FreeAudio done"
+	CLOSEAHI
+    SPRINT	"CLOSE AHI done"
+.1	
+    clr.l   psb_AhiBase(a5)
+.x	
+    popm	all
+	rts
+
+ahiCtrlTags:
+	dc.l	AHIC_Play,1
+	dc.l	TAG_DONE
+
+ahiStopCtrlTags:
+	dc.l	AHIC_Play,0
+	dc.l	TAG_DONE
+
+ahiTags
+	dc.l	AHIA_MixFreq,PLAYBACK_FREQ
+	dc.l	AHIA_Channels,2
+ahiChannels = *-4
+	dc.l	AHIA_Sounds,4
+	dc.l	AHIA_AudioID,$20004	; paula 8-bit stereo
+ahiMode = *-4
+
+	dc.l	AHIA_SoundFunc,.soundFunc
+	dc.l	TAG_DONE
+
+.soundFunc:
+	ds.b	MLN_SIZE
+	dc.l	.soundFuncImpl
+	dc.l	0
+	dc.l	0
+
+* in:
+* a0	struct Hook *
+* a1	struct AHISoundMessage *
+* a2	struct AHIAudioCtrl *
+.soundFuncImpl:
+    tst.w   ahism_Channel(a1)
+    bne     .right
+
+    pushm   d2-d7/a2-a6
+    move.l  _PlaySidBase,a6
+    cmp.w   #PM_PLAY,psb_PlayMode(a6)
+    bne.b   .x
+    jsr     Play64
+.x
+    bsr     ahiSwitchAndFillLeftBuffer
+    moveq   #0,d4
+    bsr     ahiPlayLeftBuffer
+    popm    d2-d7/a2-a6
+.y
+	rts
+
+.right
+    pushm   d2-d7/a2-a6
+    move.l  _PlaySidBase,a6
+    bsr     ahiSwitchAndFillRightBuffer
+    moveq   #0,d4
+    bsr     ahiPlayRightBuffer
+    popm    d2-d7/a2-a6
+    rts
+
+
+
+
+*-----------------------------------------------------------------------*
+*
+* Debug
+*
+*-----------------------------------------------------------------------*
+
+
+  ifne ENABLE_REGDUMP
+saveDump
+    lea     .d(pc),a0
+    lea     regDump,a1
+    move.l  regDumpOffset,d0
+    DPRINT  "save reg dump offset=%ld"
+    mulu.l  #4,d0
+    bsr     plainSaveFile
+    rts
+
+.d  dc.b    "sys:psid.bin",0
+    even
+
+* Saves a file
+* in:	
+*  a0 = file path
+*  a1 = data address
+*  d0 = data length
+*  a6 = dos base
+* out: 
+*  d0 = Written bytes or -1 if error
+plainSaveFile:
+	movem.l	d1-a6,-(sp)
+    tst.l   a6
+    beq     .openErr
+
+    moveq	#-1,d7
+	move.l	a1,d4
+	move.l 	d0,d5
+    
+	move.l	a0,d1
+	move.l	#MODE_NEWFILE,d2
+	jsr     _LVOOpen(a6)
+	move.l	d0,d6
+	beq.b	.openErr
+
+	move.l	d6,d1	* file
+	move.l	d4,d2	* buffer
+	move.l	d5,d3  	* len
+	jsr     _LVOWrite(a6)
+    DPRINT  "write=%ld"
+	move.l  d0,d7 
+
+	move.l	d6,d1 
+	jsr     _LVOClose(a6)
+.openErr 
+
+	move.l	d7,d0
+	movem.l (sp)+,d1-a6
+	rts
+  endif
+
+    section bss1,bss
+
+workerTaskStack     ds.b    4096
+workerTaskStruct    ds.b    TC_SIZE
+
+  ifne ENABLE_REGDUMP
+regDumpTime         ds.w    1
+regDumpOffset       ds.l    1
+regDump
+    * time(w),reg(b),data(b)
+    ds.l    REGDUMP_SIZE
+  endif
+
+ if DEBUG
+
+   section debug,code
+
+PRINTOUT_DEBUGBUFFER
+	pea     _debugDesBuf(pc)
+	bsr.b   PRINTOUT
+	rts
+
+PRINTOUT
+	pushm	d0-d3/a0/a1/a5/a6
+	move.l	_output(pc),d1
+	bne.w	.open
+
+    move.b  _DOSBase(pc),d0
+    bne.b   .1
+    move.l  4.w,a6
+    lea     .dosname(pc),a1
+    jsr     _LVOOldOpenLibrary(a6)
+    move.l  d0,_DOSBase
+.1
+
+
+	* try tall window firsr
+	move.l	#.bmb,d1
+	move.l	#MODE_NEWFILE,d2
+    move.l  _DOSBase(pc),a6
+	jsr 	_LVOOpen(a6)
+	move.l	d0,_output
+	bne.b	.open
+	* smaller next
+	move.l	#.bmbSmall,d1
+	move.l	#MODE_NEWFILE,d2
+	jsr 	_LVOOpen(a6)
+	move.l	d0,_output
+	bne.b	.open
+	* still not open! exit
+	bra.b	.x
+
+.bmb		dc.b	"CON:20/10/350/190/PlaySID debug",0
+.bmbSmall  	dc.b	"CON:20/10/350/90/PlaySID debug",0
+    even
+
+
+.open
+	move.l	32+4(sp),a0
+
+	moveq	#0,d3
+	move.l	a0,d2
+.p	addq	#1,d3
+	tst.b	(a0)+
+	bne.b	.p
+    move.l  _DOSBase(pc),a6
+ 	jsr     _LVOWrite(a6)
+.x	popm	d0-d3/a0/a1/a5/a6
+	move.l	(sp)+,(sp)
+	rts
+ 
+
+.dosname     dc.b    "dos.library",0
+    even
+
+desmsgDebugAndPrint
+	* sp contains the return address, which is
+	* the string to print
+	movem.l	d0-d7/a0-a3/a6,-(sp)
+	* get string
+	move.l	4*(8+4+1)(sp),a0
+	* find end of string
+	move.l	a0,a1
+.e	tst.b	(a1)+
+	bne.b	.e
+	move.l	a1,d7
+	btst	#0,d7
+	beq.b	.even
+	addq.l	#1,d7
+.even
+	* overwrite return address 
+	* for RTS to be just after the string
+	move.l	d7,4*(8+4+1)(sp)
+
+	lea	    _debugDesBuf(pc),a3
+	move.l	sp,a1	
+ ifne SERIALDEBUG
+    lea     .putCharSerial(pc),a2
+ else
+	lea	.putc(pc),a2	
+ endif
+	move.l	4.w,a6
+	jsr	    _LVORawDoFmt(a6)
+	movem.l	(sp)+,d0-d7/a0-a3/a6
+ ifeq SERIALDEBUG
+	bsr	PRINTOUT_DEBUGBUFFER
+ endif
+	rts	* teleport!
+.putc	
+	move.b	d0,(a3)+	
+	rts
+
+.putCharSerial
+    ;_LVORawPutChar
+    ; output char in d0 to serial
+    move.l  4.w,a6
+    jsr     -516(a6)
+    rts
+
+CloseDebug:
+    pushm   all
+    move.l  _DOSBase(pc),a6
+    cmp.w   #0,a6
+    beq     .2
+    move.l  _output(pc),d1
+    beq.b   .1
+ 	jsr     _LVOClose(a6)
+.1
+    move.l  a6,a1
+    move.l  4.w,a6
+    jsr     _LVOCloseLibrary(a6)
+.2
+    clr.l   _DOSBase
+    clr.l   _output
+    popm    all
+    rts
+
+_DOSBase        ds.l    1
+_output			ds.l 	1
+_debugDesBuf	ds.b	1024
+ endif ;; DEBUG
+
