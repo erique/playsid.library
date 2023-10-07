@@ -12,6 +12,7 @@ PLAYSID_LIBDEFS_I SET  1
 ;************************************************************************
 ; Private definitions for emul_lib.s
 ;************************************************************************
+	include "git.gen.i"
 
 PSIDLIB_VERSION		equ	1
 PSIDLIB_REVISION	equ	6
@@ -21,7 +22,9 @@ PSIDLIB_NAME	MACRO
 		ENDM
 
 PSIDLIB_IDSTRING MACRO
-		dc.b	"playsid.library 1.6 (7.10.2023) reSID+SIDBlaster",13,10,0
+		dc.b	"playsid.library 1.6 (7.10.2023) reSID+SIDBlaster (git:"
+		GIT
+		dc.b	")",13,10,0
 		ENDM
 
 PSIDLIB_COPYRIGHT MACRO
