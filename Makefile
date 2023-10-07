@@ -25,7 +25,6 @@ GIT_INCLUDE?=git.gen.i
 GIT :=$(shell git describe --always)# can't use '--dirty' because playsid.library 
 GIT_DEFINE:='\#define GIT "$(GIT)"'
 OLD_DEFINE:='$(shell [[ -e $(GIT_HEADER) ]] && cat $(GIT_HEADER) || echo "nothing")'
-GIT_EQUATE:='\n\n    dc.b "$(GIT)"'
 GIT_MACRO :='$(shell echo -e 'GIT\tMACRO\r\tdc.b "$(GIT)"\r\tENDM')'
 OLD_MACRO :='$(shell [[ -e $(GIT_INCLUDE) ]] && cat $(GIT_INCLUDE) || echo "nothing")'
 $(info GIT = $(GIT))
