@@ -220,6 +220,7 @@ AutoInitVectors	;***** Standard System Routines *****
         dc.l    @MeasureResidPerformance
         dc.l    @GetSongSpeed
         dc.l    @SetAHIMode
+        dc.l    @SetResidBoost
 		dc.l	-1
 
 AutoInitStructure
@@ -561,6 +562,8 @@ GetEnvDebugFlag:
 		rts
 
 * Returns true is reSID operating mode is active
+* Out:
+*   d0 = true or false
 residActive:
         cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
         beq.b   .2
@@ -8130,6 +8133,20 @@ residData2     ds.b    resid_SIZEOF
     jmp     sid_enable_external_filter
 
 
+* In:
+*   d0 = reSID volume boost, 0 or 1 do nothing, 2x is double, 4x is quadruple
+@SetResidBoost:
+    DPRINT  "SetResidBoost %ld"
+
+    push    d0
+    move.l  psb_reSID(a6),a0
+    jsr     sid_set_output_boost
+    pop     d0
+    move.l  psb_reSID2(a6),a0
+    jmp     sid_set_output_boost
+
+
+
 * Out:
 *   d0 = buffer length in samples
 *   d1 = period value used
@@ -8247,6 +8264,14 @@ initResid:
     moveq   #0,d0
     move.l  psb_reSID2(a6),a0
     jsr     sid_enable_external_filter
+
+    moveq   #3,d0
+    move.l  psb_reSID(a6),a0
+    jsr     sid_set_output_boost
+    moveq   #3,d0
+    move.l  psb_reSID2(a6),a0
+    jsr     sid_set_output_boost
+
 
     movem.l (sp)+,d1-a6
     rts

@@ -51,6 +51,7 @@ LIBRARIES_PLAYSID_LIB_I SET	1
     LIBDEF _LVOMeasureRESIDPerformance
     LIBDEF _LVOGetSongSpeed
     LIBDEF _LVOSetAHIMode
+    LIBDEF _LVOSetRESIDBoost
     
 CALLPLAYSID	MACRO
 	move.l	_PlaySidBase,a6
