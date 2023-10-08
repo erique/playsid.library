@@ -21,6 +21,9 @@ jobs:
       with:
         submodules: recursive
 
+    - name: Trust git workdir
+      run: git config --global --add safe.directory $PWD
+
     - name: Clean
       run: make clean
 

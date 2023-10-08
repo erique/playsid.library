@@ -6,3 +6,4 @@
 *.o
 test_blaster
 /*.sym
+/git.gen.*
