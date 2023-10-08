@@ -5,3 +5,4 @@
 *.map
 *.o
 test_blaster
+/*.sym
