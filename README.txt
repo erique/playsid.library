@@ -40,22 +40,16 @@ reSID
 reSID provides an accurate, cycle exact emulation of both the 6581 
 and the 8580 SID chips, with filter support. 
 
-reSID is very heavy on the CPU. Depending on the tune, it will
-use about half of the available CPU power on an A1200 with a 50MHz 68060.
-An FPU is not required.
+reSID is very heavy on the CPU. Depending on the tune and settings, 
+it will use half or more of the available CPU power on an A1200 with a 
+50MHz 68060. An FPU is not required.
 
-Samples will not be heard. This is because the samples have typically 
-had some special handling in SID players and emulators. The 
-playsid.library sample handling is not usable with reSID.
-
-Multispeed tunes are supported, as well as stereo SIDs (2SIDs). 
-A 50MHz 68060 can play most of these with filters enabled.
+In reSID mode the library is able to play stereo SIDs (2SID),
+outputting six SID channels.
 
 Sometimes the sound output may be noisy. This is sampling noise, 
 result of the reSID "fast sampling" method. A few other sampling
-modes are also available to reduce the noise. These are heavier and 
-may not run on a 50 MHz 68060. The "Oversample 2x" should be fine
-with 50 MHz.
+modes are also available to reduce the noise. 
 
 If the tune being played and/or the chosen sampling mode is too 
 heavy, data will be skipped to avoid slowing down the system too much.
@@ -109,3 +103,7 @@ Changelog
               starting playback.
             - Fix another crash bug related to earlier reSID  
               modifications.
+- 2023-?    - Support for digisample playback with reSID, as 
+  v1.?        heard in "Skate or Die" or "Arkanoid", for example.
+            - Fix volume setting so that it also changes the 
+              digisample volume in the original mode.
