@@ -5,4 +5,4 @@
 # $ ./docker.sh "echo | m68k-amigaos-gcc -dM -E -" | grep __VERSION__
 
 # Use a published container
-docker run --volume "$PWD":/host --workdir /host -i -t trixitron/m68k-amigaos-gcc /bin/bash -c "$*"
+docker run --volume "$PWD":/host --workdir /host -i -t trixitron/m68k-amigaos-gcc /bin/bash -c "git config --global --add safe.directory /host && $*"
