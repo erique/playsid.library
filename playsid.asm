@@ -1381,7 +1381,17 @@ SetCh4VolMultiplier:
         cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
         bne.b   .1
 .2
-        move.w  #CH4_RESID_VOLSCALE,ch4_SamVolMultiplier(a0)
+        * Scale the 4ch sample volume accordingly too
+        moveq   #CH4_RESID_VOLSCALE,d0
+        move.l  psb_reSID(a6),a1
+        move.l  sid_outputBoost(a1),d1
+        beq.b   .3
+        mulu    d1,d0
+        cmp.w   #$40,d0
+        bls.b   .3
+        moveq   #$40,d0
+.3
+        move.w  d0,ch4_SamVolMultiplier(a0)
 .1
         rts
 
