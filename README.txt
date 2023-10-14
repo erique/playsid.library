@@ -2,16 +2,16 @@
 *=======================================================================*
 *                                                                       *
 *       C64 MUSIC EMULATOR FOR AMIGA                                    *
-*       (C) 1990-1994 HÃ…KAN SUNDELL & RON BIRK                          *
+*       (C) 1990-1994 HÅKAN SUNDELL & RON BIRK                          *
 *                                                                       *
 *=======================================================================*
 
 This version of playsid.library provides three different sound
 output methods:
 
-- The original SID emulation by Per Sundell & Ron Birk
-- The reSID emulation engine by Dag Lem
-- SIDBlaster-USB, a device that uses a SID chip for sound
+- The original SID emulation by Per Sundell & Ron Birk (kick 1.3, 68000)
+- The reSID emulation engine by Dag Lem (68060 or similar)
+- SIDBlaster-USB, a device that uses a SID chip for sound (kick 2.0+, 68020)
 
 To use, copy "playsid.library" into LIBS:, replacing the original
 version. By default it will use the original SID emulation mode.
@@ -29,9 +29,6 @@ These are at least: HippoPlayer, DeliTracker, Magic64, Frodo.
 HippoPlayer also provides additional integration in the user interface: output
 mode selection, sampling mode, filter and volume setting, scope display. With
 Hippo the environment variable setting is not used.
-
-If you're running kickstart 1.3 or 68000 you should use the original 
-library version.
 
 
 reSID
@@ -76,7 +73,7 @@ and allow playback using it, providing a truly authentic sound.
 In addition to some extra hardware and USB connectivity, 
 the Poseidon USB stack needs to be installed. 
 
-Samples will not be heard. The playsid.library sample handling 
+Digisamples will not be heard. The playsid.library sample handling 
 is not usable with SIDBlaster.
 
 SIDBlaster driver and integration by Erique
@@ -103,7 +100,11 @@ Changelog
               starting playback.
             - Fix another crash bug related to earlier reSID  
               modifications.
-- 2023-?    - Support for digisample playback with reSID, as 
-  v1.?        heard in "Skate or Die" or "Arkanoid", for example.
+- 2023-10   - Improved SIDBlaster support, faster and more stable.
+  v1.6        Lower CPU requirement than before, works on 68020.
+            - Support for digisample playback with reSID, as 
+              heard in "Skate or Die" or "Arkanoid", for example.
             - Fix volume setting so that it also changes the 
               digisample volume in the original mode.
+            - Add support for reSID volume boost.
+            - Library compatible with kick 1.3.
