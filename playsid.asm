@@ -4728,6 +4728,16 @@ writeSID2Register:
 
 *-----------------------------------------------------------------------*
 
+write_sid_reg:
+	movem.l	d0-a6,-(sp)
+    moveq   #0,d0
+    moveq   #0,d1
+	move.b	d7,d0
+	move.b	d6,d1
+	jsr	_sid_write_reg_record
+	movem.l	(sp)+,d0-a6
+	rts
+
 start_sid_blaster:
     DPRINT  "start_sid_blaster"
 	movem.l	d1-a6,-(sp)
@@ -4747,16 +4757,6 @@ stop_sid_blaster:
     DPRINT  "stop_sid_blaster"
 	movem.l	d0-a6,-(sp)
 	jsr	_sid_exit
-	movem.l	(sp)+,d0-a6
-	rts
-
-write_sid_reg:
-	movem.l	d0-a6,-(sp)
-	and.l	#$ff,d7
-	and.l	#$ff,d6
-	move.l	d7,d0
-	move.l	d6,d1
-	jsr	_sid_write_reg_record
 	movem.l	(sp)+,d0-a6
 	rts
 
