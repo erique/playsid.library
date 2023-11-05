@@ -8108,22 +8108,6 @@ residData2     ds.b    resid_SIZEOF
     move.l  psb_reSID2(a6),a0
     jmp     sid_set_volume
     
-* In:
-*   d0 = 0 for 6581, 1 for 8580
-@SetResidChipModel
-    move.b  d0,d1
-    moveq   #CHIP_MODEL_MOS6581,d0
-    tst.b   d1
-    beq     .1
-    moveq   #CHIP_MODEL_MOS8580,d0
-.1  
-    push    d0
-    move.l  psb_reSID(a6),a0
-    jsr     sid_set_chip_model
-    pop     d0
-
-    move.l  psb_reSID2(a6),a0
-    jmp     sid_set_chip_model
     
 
 * In:
