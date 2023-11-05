@@ -100,11 +100,14 @@ Changelog
               starting playback.
             - Fix another crash bug related to earlier reSID  
               modifications.
-- 2023-10   - Improved SIDBlaster support, faster and more stable.
+- 2023-11   - Improved SIDBlaster support, faster and more stable.
   v1.6        Lower CPU requirement than before, works on 68020.
             - Support for digisample playback with reSID, as 
               heard in "Skate or Die" or "Arkanoid", for example.
+              NOTE: Digisamples not supported in AHI mode.
             - Fix volume setting so that it also changes the 
               digisample volume in the original mode.
             - Add support for reSID volume boost.
             - Library compatible with kick 1.3.
+            - Allow "Oversample" modes to work with AHI.
+         
