@@ -213,13 +213,15 @@ AutoInitVectors	;***** Standard System Routines *****
 		;****** New stuff, reSID support ******
         dc.l    @SetOperatingMode
         dc.l    @GetOperatingMode
+        dc.l    @SetRESIDMode
+        dc.l    @GetRESIDMode
         dc.l    @SetVolume
-        dc.l    @SetResidChipModel
         dc.l    @SetResidFilter
         dc.l    @GetResidAudioBuffer
         dc.l    @MeasureResidPerformance
         dc.l    @GetSongSpeed
         dc.l    @SetAHIMode
+        dc.l    @GetAHIMode
         dc.l    @SetResidBoost
 		dc.l	-1
 
@@ -380,13 +382,10 @@ AutoInitFunction
 		move.w	#PM_STOP,psb_PlayMode(a6)
 		move.w	#1,psb_EmulResourceFlag(a6)
 
-        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
-        beq.b   .2
-        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
-        bne.b   .1
-.2
+        bsr     isResidActive
+        beq     .1
         jsr     initResid
-.1  
+.1
         * Default volume
         moveq   #$40,d0
         jsr     @SetVolume
@@ -510,11 +509,9 @@ GetEnvDebugFlag:
         bsr     stop_sid_blaster
 
         ; Not safe if initRESID has not been called earlier:    
-        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
-        beq.b   .2
-        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
-        bne.b   .1
-.2      jsr     resetResid
+        bsr     isResidActive
+        beq     .1
+        jsr     resetResid
 .1  
         jsr     ahiStop
 
@@ -543,43 +540,65 @@ GetEnvDebugFlag:
 * To be called before AllocEmulResource
 * in:
 *   d0 = Operating mode
-*   d1 = reSID mode, optional
 @SetOperatingMode
  if DEBUG
         ext.l   d0
-        ext.l   d1
-        DPRINT  "SetOperatingMode mode=%ld resid=%ld"
+        DPRINT  "SetOperatingMode=%ld"
  endif
     	move.w	d0,psb_OperatingMode(a6)
-    	move.w	d1,psb_ResidMode(a6)
+		rts
+
+* To be called before AllocEmulResource
+* in:
+*   d0 = reSID mode
+@SetRESIDMode
+ if DEBUG
+        ext.l   d0
+        DPRINT  "SetRESIDMode=%ld"
+ endif
+    	move.w	d0,psb_ResidMode(a6)
 		rts
 
 @GetOperatingMode
         moveq   #0,d0
     	move.w	psb_OperatingMode(a6),d0
-        moveq   #0,d1
-    	move.w	psb_ResidMode(a6),d1
+		rts
+
+@GetRESIDMode
+        moveq   #0,d0
+    	move.w	psb_ResidMode(a6),d0
 		rts
 
 * Returns true is reSID operating mode is active
 * Out:
-*   d0 = true or false
-residActive:
+*   Z-flag = clear/true, set/false
+isResidActive:
         cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
         beq.b   .2
         cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
         beq.b   .2
-        moveq   #0,d0
+        cmp.w   #OM_RESID_AUTO,psb_OperatingMode(a6)
+        beq.b   .2
+        * False
+        or.b	#(1<<2),ccr  * Set Z
         rts
-.2      moveq   #1,d0
+.2      * True
+    	and.b	#~(1<<2),ccr * Clear Z
         rts
 
 
+* In:
+*  d0 = AHI mode to use for reSID, or NULL to not use.
 @SetAHIMode
         DPRINT  "SetAHIMode=%lx"
         move.l  d0,psb_AhiMode(a6)
         move.l  d0,ahiMode
         rts
+
+@GetAHIMode
+        move.l  psb_AhiMode(a6),d0
+        rts
+
 
 *-----------------------------------------------------------------------*
 @SetVertFreq	move.w	d0,psb_VertFreq(a6)
@@ -660,7 +679,17 @@ residActive:
 		move.w	#1,psb_SongSetFlag(a6)
         move.l  (sp)+,a1
 
+        bsr     getSid2Address
+        bsr     getSidChipVersion
 
+		;CALLEXEC Permit
+		rts
+
+
+
+* In:  
+*   a0 = module
+getSid2Address:
 ; +7A    BYTE secondSIDAddress
 ; Valid values:
 ; - 0x00 (PSID V2NG)
@@ -680,23 +709,37 @@ residActive:
         cmp.b   #$fe,d0
         bls.b   .sid2    
 .x
-		;CALLEXEC Permit
 		rts
-
 .sid2
         and.l   #$ff,d0
         lsl     #4,d0
         add.l   #$d000,d0
         move.w  d0,psb_Sid2Address(a6)
         DPRINT  "2nd SID at %lx"
-        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
-        beq.b   .3
-        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
-        beq.b   .3
-        rts
-.3
+        bsr     isResidActive
+        beq     .3
         bsr     MakeMMUTable2
-        rts
+.3      rts
+
+* Detect SID version to use
+* In:  
+*   a0 = module
+getSidChipVersion:
+    move.w  #%01,psb_HeaderChipVersion(a6)
+    cmp     #2,sidh_version(a0)
+    blo     .v1
+    ; Header v2
+    ;Bits 4-5 specify the SID version (sidModel):
+    ;00 = Unknown,
+    ;01 = MOS6581,
+    ;10 = MOS8580,
+    ;11 = MOS6581 and MOS8580.
+    moveq   #%11<<4,d0
+    and     sidh_flags(a0),d0
+    lsr     #4,d0
+    move.w  d0,psb_HeaderChipVersion(a6)
+.v1    
+    rts
 
 
 sid2Enabled:
@@ -1360,11 +1403,8 @@ InitSID
 		move.w	#4,ch_SamLen(a0)
 
         bsr     SetCh4VolMultiplier
-        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
-        beq.b   .2
-        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
-        bne.b   .1
-.2
+        bsr     isResidActive
+        beq     .1
         jsr     resetResid
 .1  
     	movem.l	(a7)+,a2-a3
@@ -1381,11 +1421,9 @@ SetCh4VolMultiplier:
 		move.l	psb_Chan4(a6),a0
         move.w  #$40,ch4_SamVolMultiplier(a0)   * No scaling
 
-        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
-        beq.b   .2
-        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
-        bne.b   .1
-.2
+        bsr     isResidActive
+        beq     .1
+
         * Scale the 4ch sample volume accordingly too
         moveq   #CH4_RESID_VOLSCALE,d0
         move.l  psb_reSID(a6),a1
@@ -4818,11 +4856,12 @@ OpenIRQ
 
         * For sample playback with reSID get one of the audio interrupts,
         * if not using AHI
-        cmp.w   #REM_AHI,psb_ResidMode(a5)
-        beq     .ah
-        bsr     residActive
-        bne     .getAud3
-.ah
+        bsr     isResidActive
+        beq     .notResid
+        tst.l   psb_AhiMode(a6)
+        bne     .1
+        bra     .getAud3
+.notResid
         * Skip lev4 unless normal mode
         tst.w   psb_OperatingMode(a6)
         bne     .1
@@ -4885,11 +4924,9 @@ OpenIRQ
 .2		tst.w	psb_TimerBFlag(a6)
 		bne.s	.3
 
-        * Skip this timer (playback) if reSID
-        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
-        beq.b   .3
-        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
-        beq.b   .3
+        * Skip this timer (playback timer) if reSID
+        bsr     isResidActive
+        bne     .3
 
 		lea	timerBIntr,a1
 		moveq	#CIAICRB_TB,d0
@@ -4900,12 +4937,9 @@ OpenIRQ
 		bne.s	.error
 		move.w	#1,psb_TimerBFlag(a6)
 .3		
-        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
-        beq.b   .reSID
-        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
-        beq.b   .reSID
-        bra.b   .5    
-.reSID
+
+        bsr     isResidActive
+        beq     .5
         jsr     createResidWorkerTask
 .5
         bsr	PlayDisable
@@ -4971,13 +5005,10 @@ CloseIRQ	tst.w	psb_TimerBFlag(a6)
 .na4
         move.w	#0,psb_IntVecAudFlag(a6)
 .3
-        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
-        beq.b   .resid
-        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
-        beq.b   .resid
-        rts
-.resid
+        bsr     isResidActive
+        beq     .noResid
         jsr     stopResidWorkerTask
+.noResid
         rts
 
 *-----------------------------------------------------------------------*
@@ -5530,15 +5561,18 @@ EndOfLibrary
 @FreeEmulAudio	jmp	@FreeEmulAudio_impl.l
 
 @AllocEmulAudio	
+        * No audio alloc with SIDBlaster
         cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
-        beq.b   .3
-        cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
-        beq.b   .1
-        cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
-        bne.b   .2
-.1      cmp.w   #REM_AHI,psb_ResidMode(a6)
-        bne.b   .2 
-        * No audio alloc when AHI in use
+        beq     .3
+
+        * Allocate audio in classic mode  
+        bsr     isResidActive
+        beq     .2
+
+        * Allocate audio in reSID mode
+        tst.l   psb_AhiMode(a6)
+        beq     .2 
+        * No audio alloc when reSID+AHI
 .3
         moveq   #0,d0 * no error
         rts
@@ -8093,10 +8127,8 @@ residData2     ds.b    resid_SIZEOF
 
 @SetVolume 
     move    d0,psb_Volume(a6)
-    cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
-    beq.b   .1
-    cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
-    beq.b   .1
+    bsr     isResidActive
+    bne     .1
     rts
 .1
     * Adjust sample volume    
@@ -8142,7 +8174,7 @@ residData2     ds.b    resid_SIZEOF
 *   d0 = reSID volume boost, 0 or 1 do nothing, 2x is double, 4x is quadruple
 @SetResidBoost:
     DPRINT  "SetResidBoost %ld"
-
+ 
     push    d0
     move.l  psb_reSID(a6),a0
     jsr     sid_set_output_boost
@@ -8173,7 +8205,6 @@ residData2     ds.b    resid_SIZEOF
 * Initialize reSID, safe to call whenever.
 * In:
 *    a6 = PlaySID base
-
 initResid:
     DPRINT  "initResid"
     movem.l d1-a6,-(sp)
@@ -8182,12 +8213,18 @@ initResid:
     move.l  psb_reSID2(a6),a0
     jsr     sid_constructor
 
-
     moveq   #0,d0
     move    psb_ResidMode(a6),d0
     DPRINT  "residmode=%ld"
 
+    * Map psb_ResidMode into reSID mode
+
  if ENABLE_14BIT
+    tst.l   psb_AhiMode(a6)
+    bne     .ahi
+    ; ---------------------------------
+    ; Paula gets 14-bit output
+    DPRINT  "Paula"
     moveq   #SAMPLING_METHOD_OVERSAMPLE2x14,d1
     cmp     #REM_OVERSAMPLE2,d0
     beq.b   .go
@@ -8197,20 +8234,35 @@ initResid:
     moveq   #SAMPLING_METHOD_OVERSAMPLE4x14,d1
     cmp     #REM_OVERSAMPLE4,d0
     beq.b   .go
+    ; ---------------------------------
     moveq   #SAMPLING_METHOD_INTERPOLATE14,d1
     cmp     #REM_INTERPOLATE,d0
     beq.b   .go
-    
-    
-    moveq   #SAMPLING_METHOD_SAMPLE_FAST16,d1
-    cmp     #REM_AHI,d0
-    beq.b   .go
-    ; Default
+    ; ---------------------------------
+    ; Default mode
     moveq   #SAMPLING_METHOD_SAMPLE_FAST14,d1
  else
     moveq   #SAMPLING_METHOD_SAMPLE_FAST8,d1
  endif
+    bra     .go
+.ahi
+    ; ---------------------------------
+    ; AHI gets 16-bit output
+    DPRINT  "AHI"
+    moveq   #SAMPLING_METHOD_OVERSAMPLE2x16,d1
+    cmp     #REM_OVERSAMPLE2,d0
+    beq.b   .go
+    moveq   #SAMPLING_METHOD_OVERSAMPLE3x16,d1
+    cmp     #REM_OVERSAMPLE3,d0
+    beq.b   .go
+    moveq   #SAMPLING_METHOD_OVERSAMPLE4x16,d1
+    cmp     #REM_OVERSAMPLE4,d0
+    beq.b   .go
+    ; ---------------------------------
+    ; Default mode for AHI
+    moveq   #SAMPLING_METHOD_SAMPLE_FAST16,d1
 .go
+    ; ---------------------------------
 
  if DEBUG
     moveq   #0,d0
@@ -8247,12 +8299,25 @@ initResid:
     move.l  psb_reSID2(a6),a0
     jsr     sid_reset
 
+    ; ---------------------------------
+    ; Determine chip model - operating mode
     moveq   #CHIP_MODEL_MOS6581,d0
     cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
     beq.b   .1
-    cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
-    bne.b   .1
     moveq   #CHIP_MODEL_MOS8580,d0
+    cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+    beq.b   .1
+    cmp.w   #OM_RESID_AUTO,psb_OperatingMode(a6)
+    bne     .1
+    ; Determine chip model - based on header
+    moveq   #CHIP_MODEL_MOS6581,d0
+    cmp     #%01,psb_HeaderChipVersion(a6)
+    beq     .1
+    moveq   #CHIP_MODEL_MOS8580,d0
+    cmp     #%10,psb_HeaderChipVersion(a6)
+    beq     .1
+    * Default fallback
+    moveq   #CHIP_MODEL_MOS6581,d0
 .1
     push    d0
     move.l  psb_reSID(a6),a0
@@ -8260,7 +8325,9 @@ initResid:
     pop     d0
     move.l  psb_reSID2(a6),a0
     jsr     sid_set_chip_model
+    ; ---------------------------------
 
+    * Default external filter: no external filter
     moveq   #0,d0
     move.l  psb_reSID(a6),a0
     jsr     sid_enable_external_filter
@@ -8270,13 +8337,13 @@ initResid:
     move.l  psb_reSID2(a6),a0
     jsr     sid_enable_external_filter
 
-    moveq   #3,d0
+    * Default boost: no boost
+    moveq   #0,d0
     move.l  psb_reSID(a6),a0
     jsr     sid_set_output_boost
-    moveq   #3,d0
+    moveq   #0,d0
     move.l  psb_reSID2(a6),a0
     jsr     sid_set_output_boost
-
 
     movem.l (sp)+,d1-a6
     rts
@@ -8292,6 +8359,8 @@ calcSamplesAndCyclesPerFrameFromCIATicks:
     cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
     beq.b   .go
     cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
+    beq.b   .go
+    cmp.w   #OM_RESID_AUTO,psb_OperatingMode(a6)
     beq.b   .go
     rts
 .go
@@ -8373,11 +8442,9 @@ mulu_64
 *    d0 = 0: out of mem, non-1: ok
 allocResidMemory:
     push   a6
-    cmp.w   #OM_RESID_6581,psb_OperatingMode(a6)
-    beq.b   .z
-    cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
-    bne.b   .y
-.z
+    bsr     isResidActive
+    beq     .y
+
     move.l  a6,a0
     * Allocate audio buffers
     * Two per 14-bit channel
@@ -8386,8 +8453,8 @@ allocResidMemory:
     move.l  #(SAMPLE_BUFFER_SIZE)*8,d0
   
     move.l  #MEMF_CHIP!MEMF_CLEAR,d1
-    cmp.w   #REM_AHI,psb_ResidMode(a0)
-    bne     .2
+    tst.l   psb_AhiMode(a6)
+    beq     .2
     * AHI buffers can be in public mem
     move.l  #MEMF_PUBLIC!MEMF_CLEAR,d1
 .2
@@ -8541,8 +8608,8 @@ residWorkerEntryPoint
     move.l  d0,residWorkerTask
 
     move.l  _PlaySidBase,a6
-    cmp.w   #REM_AHI,psb_ResidMode(a6)
-    bne     .notAhi
+    tst.l   psb_AhiMode(a6)
+    beq     .notAhi
 
     bsr     ahiInit
     SPRINT  "task:ahiInit=%ld"
@@ -8658,8 +8725,8 @@ residWorkerEntryPoint
     SPRINT  "task:stopping"
 
     move.l  _PlaySidBase,a6
-    cmp.w   #REM_AHI,psb_ResidMode(a6)
-    bne     .notAhi2
+    tst.l   psb_AhiMode(a6)
+    beq     .notAhi2
     bsr     ahiStop
 
     DPRINT  "task:ahi stopped"

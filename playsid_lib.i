@@ -41,16 +41,18 @@ LIBRARIES_PLAYSID_LIB_I SET	1
 	LIBDEF _LVOSetTimeEnable
 	LIBDEF _LVOSetDisplaySignal
 	LIBDEF _LVOSetDisplayEnable
-
+    ; New stuff
     LIBDEF _LVOSetOperatingMode
     LIBDEF _LVOGetOperatingMode
+    LIBDEF _LVOSetRESIDMode
+    LIBDEF _LVOGetRESIDMode
     LIBDEF _LVOSetVolume
-    LIBDEF _LVOSetRESIDChipModel
     LIBDEF _LVOSetRESIDFilter
     LIBDEF _LVOGetRESIDAudioBuffer
     LIBDEF _LVOMeasureRESIDPerformance
     LIBDEF _LVOGetSongSpeed
     LIBDEF _LVOSetAHIMode
+    LIBDEF _LVOGetAHIMode
     LIBDEF _LVOSetRESIDBoost
     
 CALLPLAYSID	MACRO

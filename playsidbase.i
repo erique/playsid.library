@@ -81,7 +81,15 @@ PM_PAUSE	equ	2
 OM_NORMAL         equ 0
 OM_RESID_6581     equ 1
 OM_RESID_8580     equ 2
-OM_SIDBLASTER_USB equ 3
+OM_RESID_AUTO     equ 3
+OM_SIDBLASTER_USB equ 4
+
+; --- reSID Modes -----------------------------------------------------
+REM_NORMAL         equ 0
+REM_OVERSAMPLE2    equ 1
+REM_OVERSAMPLE3    equ 2
+REM_OVERSAMPLE4    equ 3
+REM_INTERPOLATE    equ 4
 
 ; --- Module Header ------------------------------------------------------
 

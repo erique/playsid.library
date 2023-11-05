@@ -181,6 +181,7 @@ FREE		MACRO
     UWORD   psb_ResidMode
     APTR    psb_DOSBase
     APTR    psb_reSID2
+    UWORD   psb_HeaderChipVersion
     UWORD   psb_Sid2Address
     ULONG   psb_SamplesPerFrame
     UWORD   psb_Debug
@@ -196,17 +197,17 @@ FREE		MACRO
 	LABEL	psb_SIZEOF
 
 ; --- Error --------------------------------------------------------------
-SID_NOMEMORY	equ	-1
-SID_NOAUDIODEVICE	equ	-2
-SID_NOCIATIMER	equ	-3
-SID_NOPAUSE	equ	-4
-SID_NOMODULE	equ	-5
-SID_NOICON	equ	-6
-SID_BADTOOLTYPE	equ	-7
-SID_NOLIBRARY	equ	-8
-SID_BADHEADER	equ	-9
-SID_NOSONG	equ	-10
-SID_LIBINUSE	equ	-11
+SID_NOMEMORY      equ -1
+SID_NOAUDIODEVICE equ -2
+SID_NOCIATIMER    equ -3
+SID_NOPAUSE       equ -4
+SID_NOMODULE      equ -5
+SID_NOICON        equ -6
+SID_BADTOOLTYPE   equ -7
+SID_NOLIBRARY     equ -8
+SID_BADHEADER     equ -9
+SID_NOSONG        equ -10
+SID_LIBINUSE      equ -11
 SID_NOSIDBLASTER  equ -12
 
 ; --- Playing Modes ------------------------------------------------------
@@ -223,7 +224,8 @@ RM_PLAYBACK	equ	$8000
 OM_NORMAL         equ 0
 OM_RESID_6581     equ 1
 OM_RESID_8580     equ 2
-OM_SIDBLASTER_USB equ 3
+OM_RESID_AUTO     equ 3
+OM_SIDBLASTER_USB equ 4
 
 ; --- reSID Modes -----------------------------------------------------
 REM_NORMAL         equ 0
@@ -231,7 +233,6 @@ REM_OVERSAMPLE2    equ 1
 REM_OVERSAMPLE3    equ 2
 REM_OVERSAMPLE4    equ 3
 REM_INTERPOLATE    equ 4
-REM_AHI            equ 5
 
 ; ========================================================================;
 ; === DisplayData ========================================================;
