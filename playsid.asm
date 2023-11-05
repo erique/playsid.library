@@ -703,6 +703,7 @@ sid2Enabled:
     tst.w  psb_Sid2Address(a6)
     rts
 
+* Valid only after the emulated C64 code has set the timer values.
 @GetSongSpeed
         moveq   #0,d0
         move.w	psb_TimerConstB(a6),d0
@@ -711,7 +712,7 @@ sid2Enabled:
 .1      move.l  #(709379+28419/4),d0
         divu    d1,d0
         ext.l   d0
-        move    d0,d1
+        move.l  d0,d1
         divu    #50,d0
         ext.l   d0
         divu    #10,d1
