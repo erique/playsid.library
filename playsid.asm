@@ -293,7 +293,7 @@ AutoInitFunction
 		move.w	d0,psb_ChannelEnable+4(a6)
 		move.w	d0,psb_ChannelEnable+6(a6)
 		move.w	d0,psb_AudioDevice(a6)
-        move.w  #-1,psb_OperatingMode(a6)
+        bsr     undefineSettings
 
 		clr.w	psb_TimeSeconds(a6)		;Set time to 00:00
 		clr.w	psb_TimeMinutes(a6)
@@ -359,8 +359,7 @@ AutoInitFunction
         jsr     _LVOOldOpenLibrary(a6)
         move.l  d0,psb_DOSBase(a5)
         move.l  a5,a6
-        bsr     SetDefaultOperatingMode
-        bsr     GetEnvDebugFlag
+        bsr     GetEnvSettings
 
         cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
         bne.b   .noBlaster
@@ -411,89 +410,305 @@ _DOSName:
     dc.b    "dos.library",0
     even
 
-* Figure out a value for the operating mode if it has not been set by the API user.
-SetDefaultOperatingMode:
-        tst.w   psb_OperatingMode(a5)
-        bmi.b   .1
+*-----------------------------------------------------------------------*
+* Read environment variables for configuration
+*-----------------------------------------------------------------------*
+
+undefineSettings:
+        move.w  #-1,psb_OperatingMode(a6) 
+        move.w  #-1,psb_ResidMode(a6)
+        clr.l   psb_AhiMode(a6)
         rts
+
+GetEnvSettings:
+    DPRINT  "GetEnvSettings"
+    lea     -64(sp),sp
+    move.l  sp,a4
+    bsr     GetEnvMode
+    bsr     GetEnvResidMode
+    bsr     GetEnvResidFilter
+    bsr     GetEnvResidBoost
+    bsr     GetEnvResidAhi
+    bsr     GetEnvDebugMode
+    lea     64(sp),sp
+    rts
+
+GetEnvMode:
+    tst.l   psb_OperatingMode(a6)
+    bge     .x
+    lea     EnvMode(pc),a0
+    lea     (a4),a1
+    bsr     GetEnvVarString
+    bmi     .1  * default
+    bsr     get4
+    cmp.l   #"norm",d0
+    beq     .1    
+    cmp.l   #"6581",d0
+    beq     .2
+    cmp.l   #"8580",d0
+    beq     .3    
+    cmp.l   #"auto",d0
+    beq     .4    
+    cmp.l   #"sidb",d0
+    beq     .5
+    bra     .1 * default
+.x  rts
+
 .1
-        move.l  a6,a5
-        * Default mode
+    DPRINT  "PlaySIDMode=Norm"
+    moveq   #OM_NORMAL,d0
+    bsr     @SetOperatingMode
+    rts
+.2
+    DPRINT  "PlaySIDMode=6581"
+    moveq   #OM_RESID_6581,d0
+    bsr     @SetOperatingMode
+    rts
+.3
+    DPRINT  "PlaySIDMode=8580"
+    moveq   #OM_RESID_8580,d0
+    bsr     @SetOperatingMode
+    rts
+.4
+    DPRINT  "PlaySIDMode=Auto"
+    moveq   #OM_RESID_AUTO,d0
+    bsr     @SetOperatingMode
+    rts
+.5
+    DPRINT  "PlaySIDMode=SIDBlaster"
+    moveq   #OM_SIDBLASTER_USB,d0
+    bsr     @SetOperatingMode
+    rts
 
-        move    #OM_NORMAL,psb_OperatingMode(a5)
-        lea     -20(sp),sp
+GetEnvResidMode:
+    tst.l   psb_OperatingMode(a6)
+    bge     .x
+    lea     EnvResidMode(pc),a0
+    lea     (a4),a1
+    bsr     GetEnvVarString
+    bmi     .1 * default
+    bsr     get4
+    cmp.l   #"norm",d0
+    beq     .1    
+    cmp.l   #"ovs2",d0
+    beq     .2
+    cmp.l   #"ovs3",d0
+    beq     .3    
+    cmp.l   #"ovs4",d0
+    beq     .4
+    bra     .1 * default
+.x  rts
+
+.1
+    DPRINT  "PlaySIDreSIDMode=Norm"
+    moveq   #REM_NORMAL,d0
+    bsr     @SetRESIDMode
+    rts
+.2
+    DPRINT  "PlaySIDreSIDMode=Ovs2"
+    moveq   #REM_OVERSAMPLE2,d0
+    bsr     @SetRESIDMode
+    rts
+.3
+    DPRINT  "PlaySIDreSIDMode=Ovs3"
+    moveq   #REM_OVERSAMPLE3,d0
+    bsr     @SetRESIDMode
+    rts
+.4
+    DPRINT  "PlaySIDreSIDMode=Ovs4"
+    moveq   #REM_OVERSAMPLE4,d0
+    bsr     @SetRESIDMode
+    rts
+
+
+GetEnvResidFilter:
+    lea     EnvResidFilter(pc),a0
+    lea     (a4),a1
+    bsr     GetEnvVarString
+    bmi     .x
+    bsr     get4
+    cmp.l   #"onin",d0
+    beq     .1   
+    lsr.l   #8,d0 
+    cmp.l   #"off",d0
+    beq     .3    
+    lsr.l   #8,d0 
+    cmp.l   #"on",d0
+    beq     .2
+.x  rts
+
+.1
+    DPRINT  "PlaySIDreSIDFilter=OnIn"
+    moveq   #1,d0
+    moveq   #0,d1
+    bsr     @SetResidFilter
+    rts
+.2
+    DPRINT  "PlaySIDreSIDFilter=On"
+    moveq   #1,d0
+    moveq   #1,d1
+    bsr     @SetResidFilter
+    rts
+.3
+    DPRINT  "PlaySIDreSIDFilter=Off"
+    moveq   #0,d0
+    moveq   #0,d1
+    bsr     @SetResidFilter
+    rts
+
+GetEnvResidBoost:
+    lea     EnvResidBoost(pc),a0
+    lea     (a4),a1
+    bsr     GetEnvVarString
+    bmi     .x
+    move.b  (a4),d0
+    sub.b   #"0",d0
+    bmi     .x
+    cmp.b   #4,d0
+    bhi     .x
+    and.l   #$f,d0
+    DPRINT  "PlaySIDreSIDBoost=%ld"
+    bsr     @SetResidBoost
+.x  rts
+
+GetEnvResidAhi:
+    tst.l   psb_AhiMode(a6)
+    bne     .x
+    lea     EnvResidAHI(pc),a0
+    lea     (a4),a1
+    bsr     GetEnvVarString
+    bmi     .x
+    lea     (a4),a0
+    bsr     convertHexTextToNumber    
+    DPRINT  "ResidAHI=%lx"
+    bsr     @SetAHIMode
+.x  rts
+
+GetEnvDebugMode:
+    lea     EnvDebugMode(pc),a0
+    lea     (a4),a1
+    bsr     GetEnvVarString
+    bmi     .x
+    bsr     get4
+    lsr.l   #8,d0
+    cmp.l   #"off",d0
+    beq     .1    
+    lsr.l   #8,d0
+    cmp.l   #"on",d0
+    beq     .2
+.x  rts
+
+.1
+    DPRINT  "PlaySIDDebugMode=Off"
+    move    #0,psb_Debug(a6)
+    rts
+.2
+    DPRINT  "PlaySIDDebugMode=On"
+    move    #1,psb_Debug(a6)
+    rts
+
+; Called before AllocEmulResource:
+; - SetOperatingMode
+; - SetRESIDMode
+; - SetAHIMode
+; During AllocEmulResource:
+; - Settings from env variables
+; Called after AllocEmulResource:
+; - SetRESIDFilter
+; - SetRESIDBoost
+
+EnvMode         dc.b    "PlaySIDMode",0           ; Norm,6581,8580,Auto,Sidb(laster)
+EnvResidMode    dc.b    "PlaySIDreSIDMode",0      ; Norm,Ovs2,Ovs3,Ovs4
+EnvResidAHI     dc.b    "PlaySIDreSIDAHI",0       ; 00000000 (hex)
+EnvResidBoost   dc.b    "PlaySIDreSIDBoost",0     ; 0,1,2,3,4
+EnvResidFilter  dc.b    "PlaySIDreSIDFilter",0    ; onIn,on,off
+EnvDebugMode    dc.b    "PlaySIDDebug",0          ; on,off
+                even
+* In:
+*  a0 = name
+*  a1 = output buffer
+* Out:
+*  d0 = -1 if failed
+GetEnvVarString:
+    move.l  a6,a5
+    move.l  psb_DOSBase(a5),a6
+    cmp     #36,LIB_VERSION(a6)
+    blo     .fail
+ if DEBUG
+    move.l  a0,-(sp)
+ endif
+    clr.b   (a1)
+    move.l  a0,d1               * variable name
+    move.l  a1,d2               * output buffer
+    moveq   #32,d3              * space available
+    move.l  #GVF_GLOBAL_ONLY,d4 * global variable
+    jsr     _LVOGetVar(a6)      * get it
+ if DEBUG
+    move.l  (sp)+,d1
+    DPRINT  "GetVar=%ld: %s"
+ endif
+    tst.l   d0
+.x  move.l  a5,a6
+    rts    
+.fail   
+    moveq   #-1,d0
+    bra     .x
     
-        * Read env variable if possible
-        move.l  psb_DOSBase(a5),a6
-        cmp     #36,LIB_VERSION(a6)
-        blo     .continue
-
-        move.l  #.envVarName,d1     * variable name
-        move.l  sp,d2               * output buffer
-        moveq   #20,d3              * space available
-        move.l  #GVF_GLOBAL_ONLY,d4 * global variable
-        jsr     _LVOGetVar(a6)      * get it
-        tst.l   d0
-        bmi.b   .continue
-        move.l  sp,a0
-        cmp.b   #"0",(a0)
-        beq.b   .got0
-        cmp.b   #"1",(a0)
-        beq.b   .got1
-        cmp.b   #"2",(a0)
-        beq.b   .got2
-        cmp.b   #"3",(a0)
-        beq.b   .got3
-        bra.b   .continue
-.got0
-        move    #OM_NORMAL,psb_OperatingMode(a5)
-        bra.b  .continue
-.got1
-        move    #OM_RESID_6581,psb_OperatingMode(a5)
-        bra.b  .continue
-.got2
-        move    #OM_RESID_8580,psb_OperatingMode(a5)
-        bra.b  .continue
-.got3
-        move    #OM_SIDBLASTER_USB,psb_OperatingMode(a5)
-.continue
-
-        lea     20(sp),sp
-        move.l  a5,a6
-        rts
-
-.envVarName:
-    dc.b    "PlaySIDMode",0
-
-
-GetEnvDebugFlag:
-        lea     -20(sp),sp
-        move.l  a6,a5
-        move.l  psb_DOSBase(a5),a6
-        cmp     #36,LIB_VERSION(a6)
-        blo     .continue
-
-        move.l  #.envVarNameDebug,d1 * variable name
-        move.l  sp,d2               * output buffer
-        moveq   #20,d3              * space available
-        move.l  #GVF_GLOBAL_ONLY,d4 * global variable
-        jsr     _LVOGetVar(a6)      * get it
-        tst.l   d0
-        bmi.b   .continue
-        move.l  sp,a0
-        move    #0,psb_Debug(a5)
-        cmp.b   #"0",(a0)
-        beq.b   .continue
-        move    #1,psb_Debug(a5)
-.continue
-        lea     20(sp),sp
-        move.l  a5,a6
-        rts
-
-.envVarNameDebug:
-    dc.b    "PlaySIDDebug",0
-    even
-
+* In:
+*   a4 = text 
+* Out:
+*   d0 = 4 chars in lowercase
+get4:
+    lea     (a4),a0
+    moveq   #4-1,d1
+    moveq   #0,d0
+.l  rol.l   #8,d0
+    move.b  (a0)+,d0
+	cmp.b	#'A',d0
+	blo.b	.2
+	cmp.b	#'Z',d0
+	bhi.b	.2
+	or.b	#$20,d0 * lower case alphabet
+.2  dbf     d1,.l
+    rts
+    
+* in:
+*   a0 = 8 chars of text in hexadecimal
+* out: 
+*   d0 = number or NULL if error
+convertHexTextToNumber:
+  move.l a0,d0
+   DPRINT "hex=%s"
+	moveq	#8-1,d2
+	moveq	#32-4,d1
+	moveq	#0,d0
+.loop
+	moveq	#0,d3
+	move.b	(a0)+,d3
+    beq     .fail
+	cmp.b	#"a",d3
+	bhs.b	.hih 
+	cmp.b	#"A",d3
+	bhs.b	.hi 
+	sub.b	#"0",d3
+	bra.b	.lo
+.hih
+	sub.b	#"a"-10,d3
+	bra.b	.lo
+.hi
+	sub.b	#"A"-10,d3
+.lo
+    and.b   #$f,d3
+	lsl.l  d1,d3
+	or.l   d3,d0
+	subq   #4,d1
+	dbf	d2,.loop
+.x
+	rts
+.fail
+    moveq   #0,d0
+    rts
+    
 *-----------------------------------------------------------------------*
 @FreeEmulResource
         DPRINT  "FreeEmulResource"
@@ -515,8 +730,8 @@ GetEnvDebugFlag:
 .1  
         jsr     ahiStop
 
-        * Undefine operating mode so that will be determined again the next time.
-        move.w  #-1,psb_OperatingMode(a6)
+        * Undefine operating modes so that they will be determined again the next time.
+        bsr     undefineSettings
 .Exit		
 
 
@@ -8141,7 +8356,7 @@ residData2     ds.b    resid_SIZEOF
     jmp     sid_set_volume
     
     
-
+* Turns the reSID filters on and off.
 * In:
 *   d0 = 0 or 1, disable or enable the filter
 *   d1 = 0 or 1, disable or enable the external filter
@@ -8170,6 +8385,7 @@ residData2     ds.b    resid_SIZEOF
     jmp     sid_enable_external_filter
 
 
+* Sets the volume boost factor for reSID.
 * In:
 *   d0 = reSID volume boost, 0 or 1 do nothing, 2x is double, 4x is quadruple
 @SetResidBoost:
