@@ -359,7 +359,7 @@ AutoInitFunction
         jsr     _LVOOldOpenLibrary(a6)
         move.l  d0,psb_DOSBase(a5)
         move.l  a5,a6
-        bsr     GetEnvSettings
+        bsr     GetEnvSettingsPre
 
         cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
         bne.b   .noBlaster
@@ -392,6 +392,7 @@ AutoInitFunction
  ifne ENABLE_REGDUMP
         clr.l   regDumpOffset
  endif
+        bsr     GetEnvSettingsPost
 
         move.l  4.w,a6
         cmp     #37,LIB_VERSION(a6)
@@ -418,18 +419,28 @@ undefineSettings:
         move.w  #-1,psb_OperatingMode(a6) 
         move.w  #-1,psb_ResidMode(a6)
         clr.l   psb_AhiMode(a6)
+        clr.w   psb_Debug(a6)
         rts
 
-GetEnvSettings:
-    DPRINT  "GetEnvSettings"
+* Settings to set before initialization (AllocEmulResource)
+GetEnvSettingsPre:
+    DPRINT  "GetEnvSettingsPre"
     lea     -64(sp),sp
     move.l  sp,a4
     bsr     GetEnvMode
     bsr     GetEnvResidMode
-    bsr     GetEnvResidFilter
-    bsr     GetEnvResidBoost
     bsr     GetEnvResidAhi
     bsr     GetEnvDebugMode
+    lea     64(sp),sp
+    rts
+
+* Settings to set after initialization (AllocEmulResource)
+GetEnvSettingsPost:
+    DPRINT  "GetEnvSettingsPost"
+    lea     -64(sp),sp
+    move.l  sp,a4
+    bsr     GetEnvResidFilter
+    bsr     GetEnvResidBoost
     lea     64(sp),sp
     rts
 
@@ -481,7 +492,7 @@ GetEnvMode:
     rts
 
 GetEnvResidMode:
-    tst.l   psb_OperatingMode(a6)
+    tst.w   psb_ResidMode(a6)
     bge     .x
     lea     EnvResidMode(pc),a0
     lea     (a4),a1
