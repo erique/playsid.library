@@ -16,19 +16,31 @@ output methods:
 To use, copy "playsid.library" into LIBS:, replacing the original
 version. By default it will use the original SID emulation mode.
 
-To select the output mode, set the environment variable "PlaySIDMode"
-to a number, eg. 'setenv PlaySIDMode 1', where the numbers are:
-0 = Original
-1 = reSID 6581
-2 = reSID 8580
-3 = SIDBlaster USB
-
 Applications using "playsid.library" will automatically be enhanced.
-These are at least: HippoPlayer, DeliTracker, Magic64, Frodo. 
+These are at least: PlaySID, HippoPlayer, DeliTracker, Magic64, Frodo. 
+HippoPlayer also provides additional integration in the user interface.
 
-HippoPlayer also provides additional integration in the user interface: output
-mode selection, sampling mode, filter and volume setting, scope display. With
-Hippo the environment variable setting is not used.
+
+Configuring with environment variables
+--------------------------------------
+- Set operating mode: normal/classic mode, reSID 6581, reSID 8580, 
+  reSID auto detect or SIDBlaster USB
+  Variable: "PlaySIDMode", values: "Norm,6581,8580,Auto,Sidb"
+
+- Set reSID mode: normal, oversample 2x, 3x, 4x
+  Variable: "PlaySIDreSIDMode", values: "Norm,Ovs2,Ovs3,Ovs4"
+
+- Enable: reSID AHI output by specifying the AHI mode identifier:
+  Variable: "PlaySIDreSIDAHI", value: 8-digit hex number
+
+- Set reSID output volume boost
+  Variable: "PlaySIDreSIDBoost", values: "0,1,2,3,4"
+
+- Toggle reSID filter settings, internal on, internal+external on, both off
+  Variable: "PlaySIDreSIDFilter", values: "onIn,on,off"
+
+- Toggle reSID debug colors:
+  Variable: "PlaySIDDebug", values: "on,off"
 
 
 reSID
@@ -110,4 +122,5 @@ Changelog
             - Add support for reSID volume boost.
             - Library compatible with kick 1.3.
             - Allow "Oversample" modes to work with AHI.
+            - Enhanced environment variables for more control.
          
