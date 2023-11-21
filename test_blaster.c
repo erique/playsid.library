@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "sidblast.h"
+#include "git.gen.h"
 
 uint32_t timeout = 10;  // seconds
 uint32_t latency = 16;  // milliseconds
@@ -22,7 +23,7 @@ int main(int argc, const char** argv)
     if (argc > 3)
         taskpri = strtol(argv[3], 0, 10);
 
-    printf("%s <timeout:%d> <latency:%d> <taskpri:%d>\n", argv[0], timeout, latency, taskpri);
+    printf("%s (git:%s) <timeout:%d> <latency:%d> <taskpri:%d>\n", argv[0], GIT, timeout, latency, taskpri);
 
     if (timeout > 1000)
     {
