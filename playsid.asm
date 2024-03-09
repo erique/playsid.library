@@ -242,6 +242,7 @@ AutoInitFunction
 		move.l	a5,_PlaySidBase
         move.l  #residData,psb_reSID(a5)
         move.l  #residData2,psb_reSID2(a5)
+        move.l  #residData3,psb_reSID3(a5)
 
 		lea	Display,a2
 		move.l	a2,psb_DisplayData(a5)
@@ -906,6 +907,7 @@ isResidActive:
         move.l  (sp)+,a1
 
         bsr     getSid2Address
+        bsr     getSid3Address
         bsr     getSidChipVersion
 
 		;CALLEXEC Permit
@@ -920,6 +922,8 @@ getSid2Address:
 ; Valid values:
 ; - 0x00 (PSID V2NG)
 ; - 0x42 - 0x7F, 0xE0 - 0xFE Even values only (Version 3+)
+* Ranges 0x00-0x41 ($D000-$D410) and
+* 0x80-0xDF ($D800-$DDF0) are invalid.
         clr     psb_Sid2Address(a6)
         cmp     #3,sidh_version(a0)
         blo.b   .x
@@ -947,6 +951,44 @@ getSid2Address:
         bsr     MakeMMUTable2
 .3      rts
 
+
+
+* In:  
+*   a0 = module
+getSid3Address:
+; +7    BYTE secondSIDAddress
+; Valid values:
+; - 0x00 (PSID V2NG)
+; - 0x42 - 0x7F, 0xE0 - 0xFE Even values only (Version 3+)
+* Ranges 0x00-0x41 ($D000-$D410) and
+* 0x80-0xDF ($D800-$DDF0) are invalid.
+        clr     psb_Sid3Address(a6)
+        cmp     #4,sidh_version(a0)
+        blo.b   .x
+        move.b  $7b(a1),d0
+        btst    #0,d0
+        bne.b   .x
+        cmp.b   #$42,d0
+        blo.b   .x
+        cmp.b   #$7f,d0
+        bls.b   .sid3      
+        cmp.b   #$e0,d0
+        blo.b   .x  
+        cmp.b   #$fe,d0
+        bls.b   .sid3
+.x
+		rts
+.sid3
+        and.l   #$ff,d0
+        lsl     #4,d0
+        add.l   #$d000,d0
+        move.w  d0,psb_Sid3Address(a6)
+        DPRINT  "3rd SID at %lx"
+        bsr     isResidActive
+        beq     .3
+        bsr     MakeMMUTable3
+.3      rts
+
 * Detect SID version to use
 * In:  
 *   a0 = module
@@ -967,10 +1009,6 @@ getSidChipVersion:
 .v1    
     rts
 
-
-sid2Enabled:
-    tst.w  psb_Sid2Address(a6)
-    rts
 
 * Valid only after the emulated C64 code has set the timer values.
 @GetSongSpeed
@@ -4186,6 +4224,30 @@ MakeMMUTable2:
 	dc.b	$98+$20,$00,$00,$00,$00,$00,$00,$00
 .Sid2e
 
+	
+* IO range for SID3, to be called after SetModule when the SID2 address is known
+MakeMMUTable3:
+	movem.l	d0-a6,-(a7)
+    moveq   #0,d0
+    move.w  psb_Sid3Address(a6),d0
+    beq.b   .1
+	move.l	psb_MMUMem(a6),a1
+    add.l   d0,a1
+    lea     .Sid3(pc),a0
+    moveq   #.Sid3e-.Sid3-1,d0
+.2  move.b  (a0)+,(a1)+
+    dbf     d0,.2
+.1	movem.l	(a7)+,d0-a6
+    rts
+
+    * MMU bytes for SID3, offset by $40
+.Sid3
+    dc.b	$80+$40,$81+$40,$82+$40,$83+$40,$84+$40,$85+$40,$86+$40,$87+$40
+	dc.b	$88+$40,$89+$40,$8a+$40,$8b+$40,$8c+$40,$8d+$40,$8e+$40,$8f+$40
+	dc.b	$90+$40,$91+$40,$92+$40,$93+$40,$94+$40,$95+$40,$96+$40,$97+$40
+	dc.b	$98+$40,$00,$00,$00,$00,$00,$00,$00
+.Sid3e
+
 *-----------------------------------------------------------------------*
 Jump6502Routine		;6502 CODE MUST BE ENDED WITH RTS!
 			;D0=AC,D1=XR,D2=YR,D3+D4+D5=P,D6=PC,D7=SP
@@ -4315,7 +4377,42 @@ ReadIO					;Read 64 I/O $D000-$DFFF
 	dc.w	.D436-.JMP
 	dc.w	.D437-.JMP
 	dc.w	.D438-.JMP		;98
-    
+
+    ; Fill the gap
+    dc.w    0   ; D439
+    dc.w    0   ; D43A
+    dc.w    0   ; D43B
+    dc.w    0   ; D43C
+    dc.w    0   ; D43D
+    dc.w    0   ; D43E
+    dc.w    0   ; D43F
+
+	dc.w	.D440-.JMP		;80
+	dc.w	.D441-.JMP
+	dc.w	.D442-.JMP
+	dc.w	.D443-.JMP
+	dc.w	.D444-.JMP		;84
+	dc.w	.D445-.JMP
+	dc.w	.D446-.JMP
+	dc.w	.D447-.JMP
+	dc.w	.D448-.JMP		;88
+	dc.w	.D449-.JMP
+	dc.w	.D44A-.JMP
+	dc.w	.D44B-.JMP
+	dc.w	.D44C-.JMP		;8C
+	dc.w	.D44D-.JMP
+	dc.w	.D44E-.JMP
+	dc.w	.D44F-.JMP
+	dc.w	.D450-.JMP		;90
+	dc.w	.D451-.JMP
+	dc.w	.D452-.JMP
+	dc.w	.D453-.JMP
+	dc.w	.D454-.JMP		;94
+	dc.w	.D455-.JMP
+	dc.w	.D456-.JMP
+	dc.w	.D457-.JMP
+	dc.w	.D458-.JMP		;98
+
 .D400						;80
 	move.w	#$D400,d7
 	move.b	0(a0,d7.l),d6
@@ -4442,6 +4539,32 @@ ReadIO					;Read 64 I/O $D000-$DFFF
 .D436
 .D437
 .D438
+
+.D440
+.D441
+.D442
+.D443
+.D444
+.D445
+.D446
+.D447
+.D448
+.D449
+.D44A
+.D44B
+.D44C
+.D44D
+.D44E
+.D44F
+.D450
+.D451
+.D452
+.D453
+.D454
+.D455
+.D456
+.D457
+.D458
     clr.b   d6
 	jmp	    (a2)
 
@@ -4522,6 +4645,42 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 	dc.w	.D436-.JMP
 	dc.w	.D437-.JMP
 	dc.w	.D438-.JMP		;98
+
+    ;----------------------------------
+    ; Fill the gap
+    dc.w    0   ; D439
+    dc.w    0   ; D43A
+    dc.w    0   ; D43B
+    dc.w    0   ; D43C
+    dc.w    0   ; D43D
+    dc.w    0   ; D43E
+    dc.w    0   ; D43F
+
+	dc.w	.D440-.JMP		;80
+	dc.w	.D441-.JMP
+	dc.w	.D442-.JMP
+	dc.w	.D443-.JMP
+	dc.w	.D444-.JMP		;84
+	dc.w	.D445-.JMP
+	dc.w	.D446-.JMP
+	dc.w	.D447-.JMP
+	dc.w	.D448-.JMP		;88
+	dc.w	.D449-.JMP
+	dc.w	.D44A-.JMP
+	dc.w	.D44B-.JMP
+	dc.w	.D44C-.JMP		;8C
+	dc.w	.D44D-.JMP
+	dc.w	.D44E-.JMP
+	dc.w	.D44F-.JMP
+	dc.w	.D450-.JMP		;90
+	dc.w	.D451-.JMP
+	dc.w	.D452-.JMP
+	dc.w	.D453-.JMP
+	dc.w	.D454-.JMP		;94
+	dc.w	.D455-.JMP
+	dc.w	.D456-.JMP
+	dc.w	.D457-.JMP
+	dc.w	.D458-.JMP		;98
 
     ; ---------------------------------
 
@@ -4624,6 +4783,109 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 .D438:
 	move.w	#$D418,d7
     bsr     writeSID2Register
+    Next_Inst
+
+    ; ---------------------------------
+
+.D440:
+	move.w	#$D400,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D441:
+	move.w	#$D401,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D442:
+	move.w	#$D402,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D443:
+	move.w	#$D403,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D444:
+	move.w	#$D404,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D445:
+	move.w	#$D405,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D446:
+	move.w	#$D406,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D447:
+	move.w	#$D407,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D448:
+	move.w	#$D408,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D449:
+	move.w	#$D409,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D44A:
+	move.w	#$D40A,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D44B:
+	move.w	#$D40B,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D44C:
+	move.w	#$D40C,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D44D:
+	move.w	#$D40D,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D44E:
+	move.w	#$D40E,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D44F:
+	move.w	#$D40F,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D450:
+	move.w	#$D410,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D451:
+	move.w	#$D411,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D452:
+	move.w	#$D412,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D453:
+	move.w	#$D413,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D454:
+	move.w	#$D414,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D455:
+	move.w	#$D15,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D456:
+	move.w	#$D416,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D457:
+	move.w	#$D417,d7
+    bsr     writeSID3Register
+    Next_Inst
+.D458:
+	move.w	#$D418,d7
+    bsr     writeSID3Register
     Next_Inst
 
     ; ---------------------------------
@@ -4985,6 +5247,35 @@ writeSID2Register:
     move.b  d6,d0
     move.b  d7,d1
     move.l  psb_reSID2(a2),a0
+    jsr     sid_write
+    moveq   #1,d0
+    movem.l (sp)+,d0-a6
+    rts
+
+* Write to SID 3
+* in:
+*    d6 = data
+*    d7 = Register offset 
+* out:
+*    Z set: normal playsid operation
+*    Z clear: was written to reSID
+writeSID3Register:
+	move.l	_PlaySidBase,a2
+    tst.w   psb_OperatingMode(a2)
+    bne.b   .out
+    * Normal playsid mode
+.x
+    rts
+.out
+    cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a2)
+    beq.b   .x
+
+    * OM_RESID_6581, OM_RESID_8580
+
+    movem.l d0-a6,-(sp)
+    move.b  d6,d0
+    move.b  d7,d1
+    move.l  psb_reSID3(a2),a0
     jsr     sid_write
     moveq   #1,d0
     movem.l (sp)+,d0-a6
@@ -8321,9 +8612,10 @@ AttackTable	ds.l	$100
 _CiabBase	ds.l	1
 _PlaySidBase	ds.l	1
 
-; reSID data areas for two instances
+; reSID data areas for three SID instances
 residData      ds.b    resid_SIZEOF
 residData2     ds.b    resid_SIZEOF
+residData3     ds.b    resid_SIZEOF
 
 *-----------------------------------------------------------------------*
 
@@ -8361,11 +8653,14 @@ residData2     ds.b    resid_SIZEOF
     push    d0
     move.l  psb_reSID(a6),a0
     jsr     sid_set_volume
-    pop     d0
 
+    move.l  (sp),d0
     move.l  psb_reSID2(a6),a0
-    jmp     sid_set_volume
+    jsr     sid_set_volume
     
+    pop     d0
+    move.l  psb_reSID3(a6),a0
+    jmp     sid_set_volume
     
 * Turns the reSID filters on and off.
 * In:
@@ -8377,24 +8672,33 @@ residData2     ds.b    resid_SIZEOF
     and.l   #$ff,d1
     DPRINT  "SetResidFilter internal=%ld external=%ld"
   endif
-    pushm   d0/d1
-
     push    d1
+    push    d0
+    
+    ;move.l  (sp),d0
     move.l  psb_reSID(a6),a0
     jsr     sid_enable_filter
-    pop     d0
+
+    move.l  (sp),d0
+    move.l  psb_reSID2(a6),a0
+    jsr     sid_enable_filter
+
+    move.l  (sp)+,d0
+    move.l  psb_reSID3(a6),a0
+    jsr     sid_enable_filter
+
+    move.l  (sp),d0
     move.l  psb_reSID(a6),a0
     jsr     sid_enable_external_filter
 
-    popm    d0/d1
-   
-    push    d1
+    move.l  (sp),d0
     move.l  psb_reSID2(a6),a0
-    jsr     sid_enable_filter
-    pop     d0
-    move.l  psb_reSID2(a6),a0
-    jmp     sid_enable_external_filter
+    jsr     sid_enable_external_filter
 
+    move.l  (sp)+,d0
+    move.l  psb_reSID3(a6),a0
+    jsr     sid_enable_external_filter
+    rts
 
 * Sets the volume boost factor for reSID.
 * In:
@@ -8405,10 +8709,14 @@ residData2     ds.b    resid_SIZEOF
     push    d0
     move.l  psb_reSID(a6),a0
     jsr     sid_set_output_boost
-    pop     d0
-    move.l  psb_reSID2(a6),a0
-    jmp     sid_set_output_boost
 
+    move.l  (sp),d0
+    move.l  psb_reSID2(a6),a0
+    jsr     sid_set_output_boost
+
+    move.l  (sp)+,d0
+    move.l  psb_reSID3(a6),a0
+    jmp     sid_set_output_boost
 
 
 * Out:
@@ -8438,6 +8746,8 @@ initResid:
     move.l  psb_reSID(a6),a0
     jsr     sid_constructor
     move.l  psb_reSID2(a6),a0
+    jsr     sid_constructor
+    move.l  psb_reSID3(a6),a0
     jsr     sid_constructor
 
     moveq   #0,d0
@@ -8511,8 +8821,12 @@ initResid:
     pop     d0
  endif
 
-    popm    d0-d2
+    movem.l (sp),d0-d2
     move.l  psb_reSID2(a6),a0
+    jsr     sid_set_sampling_parameters_paula
+    
+    popm    d0-d2
+    move.l  psb_reSID3(a6),a0
     jsr     sid_set_sampling_parameters_paula
 
     * Initial value for cyclesPerFrame, 50 Hz
@@ -8524,6 +8838,8 @@ initResid:
     move.l  psb_reSID(a6),a0
     jsr     sid_reset
     move.l  psb_reSID2(a6),a0
+    jsr     sid_reset
+    move.l  psb_reSID3(a6),a0
     jsr     sid_reset
 
     ; ---------------------------------
@@ -8549,8 +8865,11 @@ initResid:
     push    d0
     move.l  psb_reSID(a6),a0
     jsr     sid_set_chip_model
-    pop     d0
+    move.l  (sp),d0
     move.l  psb_reSID2(a6),a0
+    jsr     sid_set_chip_model
+    pop     d0
+    move.l  psb_reSID3(a6),a0
     jsr     sid_set_chip_model
     ; ---------------------------------
 
@@ -8564,12 +8883,19 @@ initResid:
     move.l  psb_reSID2(a6),a0
     jsr     sid_enable_external_filter
 
+    moveq   #0,d0
+    move.l  psb_reSID3(a6),a0
+    jsr     sid_enable_external_filter
+
     * Default boost: no boost
     moveq   #0,d0
     move.l  psb_reSID(a6),a0
     jsr     sid_set_output_boost
     moveq   #0,d0
     move.l  psb_reSID2(a6),a0
+    jsr     sid_set_output_boost
+    moveq   #0,d0
+    move.l  psb_reSID3(a6),a0
     jsr     sid_set_output_boost
 
     movem.l (sp)+,d1-a6
@@ -8665,6 +8991,12 @@ mulu_64
 
 
 
+* Allocate audio buffers
+* Two 8-bit buffers per 14-bit channel per SID
+* Times two for double buffering
+* Times three for three SIDs
+RESID_BUFFERS_SIZE=(SAMPLE_BUFFER_SIZE)*2*2*3
+
 * Out:
 *    d0 = 0: out of mem, non-1: ok
 allocResidMemory:
@@ -8673,11 +9005,7 @@ allocResidMemory:
     beq     .y
 
     move.l  a6,a0
-    * Allocate audio buffers
-    * Two per 14-bit channel
-    * Times two for double buffering
-    * Times two for two SIDs
-    move.l  #(SAMPLE_BUFFER_SIZE)*8,d0
+    move.l  #RESID_BUFFERS_SIZE,d0
   
     move.l  #MEMF_CHIP!MEMF_CLEAR,d1
     tst.l   psb_AhiMode(a6)
@@ -8694,7 +9022,7 @@ allocResidMemory:
     move.l  a0,bufferMemoryPtr
     move.l  a0,a2
     lea     sidBufferAHi(pc),a1
-    moveq   #8-1,d0
+    moveq   #12-1,d0    * set 12 bufs
 .1  move.l  a0,(a1)+
     lea     SAMPLE_BUFFER_SIZE(a0),a0
     dbf     d0,.1
@@ -8716,6 +9044,14 @@ allocResidMemory:
     lea     ahiSound4(pc),a0
     move.l  a2,4(a0)
     move.l  d0,8(a0)
+    add.l   d0,a2
+    lea     ahiSound5(pc),a0
+    move.l  a2,4(a0)
+    move.l  d0,8(a0)
+    add.l   d0,a2
+    lea     ahiSound6(pc),a0
+    move.l  a2,4(a0)
+    move.l  d0,8(a0)
 
 .y  moveq   #1,d0
 .x  tst.l   d0
@@ -8726,6 +9062,8 @@ resetResid:
     move.l  psb_reSID(a6),a0
     jsr     sid_reset
     move.l  psb_reSID2(a6),a0
+    jsr     sid_reset
+    move.l  psb_reSID3(a6),a0
     jmp     sid_reset
 
 
@@ -8736,7 +9074,7 @@ freeResidMemory:
     beq.b   .y
     move.l  (a2),a1
     clr.l   (a2)
-    move.l  #(SAMPLE_BUFFER_SIZE)*8,d0
+    move.l  #RESID_BUFFERS_SIZE,d0
     move.l  4.w,a6
     jsr     _LVOFreeMem(a6)
 .y  pop     a6
@@ -8783,7 +9121,6 @@ stopResidWorkerTask:
     movem.l d0-a6,-(sp)
     tst.l   residWorkerTask
     beq     .done
-
     move.l  4.w,a6
     moveq   #0,d0
     moveq   #SIGF_SINGLE,d1
@@ -8799,7 +9136,19 @@ stopResidWorkerTask:
     jsr     _LVOWait(a6)
 
  if COUNTERS
+
     jsr     sid_get_counters
+* a2 = array
+* d3 = count - 1
+    move.l  a2,a0
+    move    d3,d0
+    addq    #1,d0
+    ;bsr     .sort
+    
+    jsr     sid_get_counters
+* a2 = array
+* d3 = count - 1
+
     lea     -20(sp),sp
 .cl
     * 4char id
@@ -8808,12 +9157,15 @@ stopResidWorkerTask:
     move.l  sp,d0
 
     * Count
-    move.l  (a2),d1
-    move.l  4(a2),d2
+    ;move.l  (a2),d1
+    ;move.l  4(a2),d2
+    move.l  4(a2),d1
     add     #12,a2
 
-    DPRINT  "%s=0x%08.8lx%08.8lx"
-
+    tst.l   d1
+    beq     .s
+    DPRINT  "%s=%08.8lx"
+.s
     dbf     d3,.cl
    
     lea     20(sp),sp
@@ -8822,6 +9174,75 @@ stopResidWorkerTask:
 .done 
     movem.l (sp)+,d0-a6
     rts
+
+ if COUNTERS
+***************************************************************************
+* Insertion sort 
+*
+* in:
+*  a0 = array of string pointers
+*  d0 = length of the array, unsigned 16-bit
+* out:
+*  a0 = sorted array
+.sort
+	cmp	#1,d0
+	bls.b	.x
+	movem.l d1/d2/d3/d6/d7/a1/a2,-(sp)
+	moveq	#1,d1 
+.sortLoopOuter
+	move	d1,d2
+.sortLoopInner
+	move	d2,d3
+	;lsl	#2,d3   * 4
+    mulu    #12,d3  * element is 12 bytes
+	;movem.l	-12(a0,d3),a1/a2
+    lea     -12(a0,d3),a1
+    lea     -12+12(a0,d3),a2
+.strCmp 
+    move.l  4(a1),d6    * counter 1
+    move.l  4(a2),d7    * counter 2
+;	cmp.l	d6,d7
+;	blo.b	.swap
+;	tst.b	d6
+;	beq.b	.exitLoop
+;	tst.b	d7
+;	beq.b	.exitLoop
+;	cmp.b	d6,d7
+;	beq.b	.strCmp
+	cmp.l	d6,d7
+	bhi.b	.exitLoop
+.swap
+    ; swap items
+    lea     -12(a0,d3),a1
+    lea     -12+12(a0,d3),a2
+    move.l  (a1),-(sp)
+    move.l  4(a1),-(sp)
+    move.l  8(a1),-(sp)
+
+    move.l  (a2),(a1)
+    move.l  4(a2),4(a1)
+    move.l  8(a2),8(a1)
+
+    move.l  (sp)+,8(a2)
+    move.l  (sp)+,4(a2)
+    move.l  (sp)+,0(a2)
+
+;	movem.l	-12(a0,d3),a1/a2
+;	exg	a1,a2
+;	movem.l	a1/a2,-12(a0,d3)
+	
+	subq	#1,d2
+;	bra.b 	.sortLoopInner
+	bne.b	.sortLoopInner	
+.exitLoop
+	addq	#1,d1
+	cmp 	d0,d1
+	bne.b 	.sortLoopOuter
+    movem.l (sp)+,d1/d2/d3/d6/d7/a1/a2
+.x	rts
+
+
+ endif
 
 
 * Playback task
@@ -8845,14 +9266,19 @@ residWorkerEntryPoint
     beq     .x
     clr.l   psb_AhiBankLeft(a6)
     clr.l   psb_AhiBankRight(a6)
+    clr.l   psb_AhiBankMiddle(a6)
     bsr     ahiSwitchAndFillLeftBuffer
     bsr     ahiSwitchAndFillRightBuffer
+    bsr     ahiSwitchAndFillMiddleBuffer
 	moveq	#AHISF_IMM,d4
     bsr     ahiPlayLeftBuffer
     DPRINT  "task:left=%ld"
 	moveq	#AHISF_IMM,d4
     bsr     ahiPlayRightBuffer
     DPRINT  "task:right=%ld"
+	moveq	#AHISF_IMM,d4
+    bsr     ahiPlayMiddleBuffer
+    DPRINT  "task:middle=%ld"
     bra     .continue
 
 .notAhi
@@ -8934,11 +9360,13 @@ residWorkerEntryPoint
 
     SPRINT  "task:active"
 .loop
+    move.l  4.w,a6
     move.l  #SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D,d0
     jsr     _LVOWait(a6)
-
     and.l   #SIGBREAKF_CTRL_C,d0
     bne.b   .x
+
+    SPRINT  "task:signal"
 
   ifeq ENABLE_LEV4PLAY
     push    a6
@@ -8956,7 +9384,7 @@ residWorkerEntryPoint
     beq     .notAhi2
     bsr     ahiStop
 
-    DPRINT  "task:ahi stopped"
+    SPRINT  "task:ahi stopped"
     
     move.l  4.w,a6
     jsr     _LVOForbid(a6)
@@ -8990,11 +9418,17 @@ residWorkerEntryPoint
     rts
 
 residSetVolume:
-  ifne ENABLE_14BIT
-    move    #64,$a8+$dff000
-    move    #1,$d8+$dff000
-    move    #64,$b8+$dff000
-    move    #1,$c8+$dff000
+  ifne ENABLE_14BIT 
+    move    #64,$a8+$dff000 * ch1 left
+    move    #1,$d8+$dff000  * ch4 left
+    move    #64,$b8+$dff000 * ch2 right
+    move    #1,$c8+$dff000  * ch3 right
+
+    tst.w   psb_Sid3Address(a6)
+    beq     .no3
+    move    #64,$c8+$dff000
+.no3
+
   else
     move    #64,$a8+$dff000
     move    #0,$d8+$dff000
@@ -9143,6 +9577,9 @@ switchAndFillBuffer:
     rts
 
 .sid2
+    tst.w   psb_Sid3Address(a6)
+    bne    .sid3
+
     basereg sidBufferAHi,a0
     * Swap SID buffers A and B
     movem.l sidBufferAHi(a0),d0/d1/a1/a2/a3/a4/a5/a6
@@ -9187,6 +9624,74 @@ switchAndFillBuffer:
     move    d0,$b4+$dff000   * words
     move    d0,$c4+$dff000   * words
     rts
+
+* Three SIDs
+* SID 1: paula 0 + 1, 14-bit
+* SID 2: paula 2, 8-bit
+* SID 3: paula 3, 8-bit
+.sid3
+    basereg sidBufferAHi,a0
+    * Swap SID buffers A and B
+    movem.l sidBufferAHi(a0),d0/d1/a1/a2/a3/a4/a5/a6
+    movem.l d0/d1,sidBufferBHi(a0)
+    movem.l a1/a2,sidBufferAHi(a0)
+
+    * Swap SID2 buffers A and B
+    movem.l a3/a4,sid2BufferBHi(a0)
+    movem.l a5/a6,sid2BufferAHi(a0)
+
+    move.l  a1,$a0+$dff000  * ch1 left: SID 1 high
+    move.l  a2,$d0+$dff000  * ch4 left: SID 1 low
+    move.l  a3,$b0+$dff000  * ch2 right: SID 2 high
+
+     * Swap SID3 buffers A and B
+    movem.l sid3BufferAHi(a0),d0/d1/a1/a2
+    movem.l d0/d1,sid3BufferBHi(a0)
+    movem.l a1/a2,sid3BufferAHi(a0)
+
+    move.l  a1,$c0+$dff000  * ch3 right: SID 3 high
+
+    endb    a0
+ 
+    ; SID 1
+
+    movem.l sidBufferAHi(pc),a1/a2
+    move.l  cyclesPerFrame(pc),d0
+    * buffer size limit
+    move.l  #SAMPLE_BUFFER_SIZE,d1
+    move.l  clockRoutine(pc),a3
+    lea     residData,a0
+    jsr     (a3)
+
+    ; SID 2
+
+    movem.l sid2BufferBHi(pc),a1/a2
+    move.l  cyclesPerFrame(pc),d0
+    * buffer size limit
+    move.l  #SAMPLE_BUFFER_SIZE,d1
+    move.l  clockRoutine(pc),a3
+    lea     residData2,a0
+    jsr     (a3)
+
+    ; SID 3
+
+    movem.l sid3BufferBHi(pc),a1/a2
+    move.l  cyclesPerFrame(pc),d0
+    * buffer size limit
+    move.l  #SAMPLE_BUFFER_SIZE,d1
+    move.l  clockRoutine(pc),a3
+    lea     residData3,a0
+    jsr     (a3)
+
+    * d0 = bytes received, make words
+    * rounds down, so may discard one byte
+    lsr     #1,d0
+    move    d0,$a4+$dff000   * words
+    move    d0,$d4+$dff000   * words
+    move    d0,$b4+$dff000   * words
+    move    d0,$c4+$dff000   * words
+    rts
+
 
 
 
@@ -9325,7 +9830,7 @@ dmawait
     lsl.l   #2,d0  * do 4 frames
     move.l  #(4*SAMPLE_BUFFER_SIZE),d1 * buffer limit
     lea     residData,a0
-    jsr     (a4)    * call clock routine
+    ;;jsr     (a4)    * call clock routine
     move.l  (sp)+,d6
 
     ;----------------------------------
@@ -9502,6 +10007,10 @@ sid2BufferAHi     dc.l    0
 sid2BufferALo     dc.l    0
 sid2BufferBHi     dc.l    0
 sid2BufferBLo     dc.l    0
+sid3BufferAHi     dc.l    0
+sid3BufferALo     dc.l    0
+sid3BufferBHi     dc.l    0
+sid3BufferBLo     dc.l    0
 
 mainTask          dc.l    0
 residWorkerTask:  dc.l    0
@@ -9568,12 +10077,20 @@ ahiInit:
     beq	.ahi_error	
 	move.l	d0,a6
 
+
     lea     ahiChannels(pc),a0
     move.l  #1,(a0)
     tst.w   psb_Sid2Address(a5)
-    beq     .monoMode
+    beq     .mm
     addq.l  #1,(a0)
-.monoMode
+    tst.w   psb_Sid3Address(a5)
+    beq     .mm
+    addq.l  #1,(a0)
+.mm
+ if DEBUG
+    move.l  (a0),d0
+    DPRINT  "AHI channels=%ld"
+ endif
 
 	lea	ahiTags(pc),a1
 	jsr	_LVOAHI_AllocAudioA(a6)
@@ -9614,18 +10131,21 @@ ahiInit:
 	tst.l	d0
 	bne	.ahi_error
 
-;	move.l	ahiMode(pc),d0
-;	lea	getattr_tags(pc),a1
-;	jsr	_LVOAHI_GetAudioAttrsA(a6)
-;    DPRINT  "GetAudioAttrs=%lx"
-;    move.l  attr_stereo,d0
-;    DPRINT  "stereo=%ld"
-;    move.l  attr_panning,d0
-;    DPRINT  "panning=%ld"
+	moveq	#4,d0				;sample 5
+	moveq	#AHIST_DYNAMICSAMPLE,d1
+	lea	ahiSound5(pc),a0
+	jsr	_LVOAHI_LoadSound(a6)
+    DPRINT  "LoadSound=%lx"
+	tst.l	d0
+	bne	.ahi_error
 
-;	bsr	ahi_setmastervol
-;	move	mainvolume+var_b(pc),d0
-;	bsr	vol
+	moveq	#5,d0				;sample 6
+	moveq	#AHIST_DYNAMICSAMPLE,d1
+	lea	ahiSound6(pc),a0
+	jsr	_LVOAHI_LoadSound(a6)
+    DPRINT  "LoadSound=%lx"
+	tst.l	d0
+	bne	.ahi_error
 
 
     ; ---------- Frequency ch1
@@ -9669,6 +10189,28 @@ ahiInit:
 	move.l	psb_AhiCtrl(a5),a2
 	jsr	_LVOAHI_SetVol(a6)
     DPRINT  "SetVol=%lx"
+
+    tst.w   psb_Sid3Address(a5)
+    beq     .stereo
+
+    ; ---------- Frequency ch3
+	moveq	#2,d0		* channel
+    move.l  #PLAYBACK_FREQ,d1
+	moveq	#AHISF_IMM,d2	* flags
+	move.l	psb_AhiCtrl(a5),a2
+	jsr	_LVOAHI_SetFreq(a6)
+    DPRINT  "SetFreq=%lx"
+
+    ; ---------- Volume ch3
+	moveq	#2,d0		* channel
+    move.l  #$10000,d1  * max volume
+    move.l  #$8000,d2  * pan middle
+	moveq	#AHISF_IMM,d3	* flags
+	move.l	psb_AhiCtrl(a5),a2
+	jsr	_LVOAHI_SetVol(a6)
+    DPRINT  "SetVol=%lx"
+
+.stereo
 .mono
 
 	lea	ahiCtrlTags(pc),a1
@@ -9739,11 +10281,36 @@ ahiSwitchAndFillRightBuffer:
 .x
     rts
 
+ahiSwitchAndFillMiddleBuffer:
+    tst.w   psb_Sid3Address(a6)
+    beq     .x
+
+    eor.w   #1,psb_AhiBankMiddle+2(a6)
+    
+    * Select target sound
+    lea     ahiSound5(pc),a3
+    tst.l   psb_AhiBankMiddle(a6)
+    beq     .0
+    lea     ahiSound6(pc),a3
+.0  
+    * a1 = output buffer
+    move.l  4(a3),a1
+
+    move.l  cyclesPerFrame(pc),d0
+    move.l  #SAMPLE_BUFFER_SIZE,d1
+    move.l  psb_reSID3(a6),a0
+    move.l  clockRoutine(pc),a3
+    jsr     (a3)
+    move.l  _PlaySidBase,a6
+    move.l  d0,psb_AhiSamplesOutMiddle(a6)
+.x
+    rts
+
 * in:
 *   d4 = ahi flags
 ahiPlayLeftBuffer:
 	move	#0,d0		* channel
-    move.l  psb_AhiBankLeft(a6),d1  * sound number to play
+    move.l  psb_AhiBankLeft(a6),d1  * sound number to play, 0 or 1
 	moveq	#0,d2		* offset
 	move.l	psb_AhiSamplesOutLeft(a6),d3	* samples to play 
 	;moveq   #0,d4
@@ -9761,7 +10328,7 @@ ahiPlayRightBuffer:
     beq     .x
 
 	move	#1,d0		* channel
-    move.l  psb_AhiBankRight(a6),d1  * sound number to play
+    move.l  psb_AhiBankRight(a6),d1  * sound number to play, 2 or 3
     addq.l  #2,d1
 	moveq	#0,d2		* offset
 	move.l	psb_AhiSamplesOutRight(a6),d3		* samples to play 
@@ -9774,7 +10341,28 @@ ahiPlayRightBuffer:
 .x
     rts
 
+* in:
+*   d4 = ahi flags
+ahiPlayMiddleBuffer:
+    tst.w   psb_Sid3Address(a6)
+    beq     .x
 
+	move	#2,d0		* channel
+    move.l  psb_AhiBankMiddle(a6),d1  * sound number to play, 4 or 5
+    addq.l  #4,d1
+	moveq	#0,d2		* offset
+	move.l	psb_AhiSamplesOutMiddle(a6),d3		* samples to play 
+	;moveq   #0,d4
+	move.l	psb_AhiCtrl(a6),a2
+    push    a6
+	move.l	psb_AhiBase(a6),a6
+	jsr     _LVOAHI_SetSound(a6)
+    pop     a6
+.x
+    rts
+
+
+* Two per channel for double buffering
 
 ahiSound1
 	dc.l	AHIST_M16S	* type
@@ -9786,13 +10374,22 @@ ahiSound2
 	dc.l	0	* addr
 	dc.l	0	* len
 
-
 ahiSound3
 	dc.l	AHIST_M16S
 	dc.l	0	* addr
 	dc.l	0	* len
 
 ahiSound4
+	dc.l	AHIST_M16S
+	dc.l	0	* addr
+	dc.l	0	* len
+
+ahiSound5
+	dc.l	AHIST_M16S
+	dc.l	0	* addr
+	dc.l	0	* len
+
+ahiSound6
 	dc.l	AHIST_M16S
 	dc.l	0	* addr
 	dc.l	0	* len
@@ -9840,7 +10437,7 @@ ahiTags
 	dc.l	AHIA_MixFreq,PLAYBACK_FREQ
 	dc.l	AHIA_Channels,2
 ahiChannels = *-4
-	dc.l	AHIA_Sounds,4
+	dc.l	AHIA_Sounds,6 * For 3 SIDs
 	dc.l	AHIA_AudioID,$20004	; paula 8-bit stereo
 ahiMode = *-4
 
@@ -9858,9 +10455,26 @@ ahiMode = *-4
 * a1	struct AHISoundMessage *
 * a2	struct AHIAudioCtrl *
 .soundFuncImpl:
-    tst.w   ahism_Channel(a1)
-    bne     .right
+    move.w  ahism_Channel(a1),d0
+    beq     .left
+    subq    #1,d0
+    beq     .right
+    subq    #1,d0
+    beq     .middle
+    rts
 
+* SID 3
+.middle
+    pushm   d2-d7/a2-a6
+    move.l  _PlaySidBase,a6
+    bsr     ahiSwitchAndFillMiddleBuffer
+    moveq   #0,d4
+    bsr     ahiPlayMiddleBuffer
+    popm    d2-d7/a2-a6
+    rts
+
+* SID 1, drives the output
+.left
     pushm   d2-d7/a2-a6
     move.l  _PlaySidBase,a6
     cmp.w   #PM_PLAY,psb_PlayMode(a6)
@@ -9874,6 +10488,7 @@ ahiMode = *-4
 .y
 	rts
 
+* SID 2
 .right
     pushm   d2-d7/a2-a6
     move.l  _PlaySidBase,a6

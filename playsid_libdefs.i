@@ -184,8 +184,10 @@ FREE		MACRO
     UWORD   psb_ResidMode
     APTR    psb_DOSBase
     APTR    psb_reSID2
+    APTR    psb_reSID3
     UWORD   psb_HeaderChipVersion
     UWORD   psb_Sid2Address
+    UWORD   psb_Sid3Address
     ULONG   psb_SamplesPerFrame
     UWORD   psb_Debug
 	UWORD	psb_OldC64TimerB
@@ -197,6 +199,8 @@ FREE		MACRO
     ULONG   psb_AhiSamplesOutLeft
     ULONG   psb_AhiBankRight
     ULONG   psb_AhiSamplesOutRight
+    ULONG   psb_AhiBankMiddle
+    ULONG   psb_AhiSamplesOutMiddle
 	LABEL	psb_SIZEOF
 
 ; --- Error --------------------------------------------------------------
