@@ -9137,13 +9137,6 @@ stopResidWorkerTask:
 
  if COUNTERS
 
-    jsr     sid_get_counters
-* a2 = array
-* d3 = count - 1
-    move.l  a2,a0
-    move    d3,d0
-    addq    #1,d0
-    ;bsr     .sort
     
     jsr     sid_get_counters
 * a2 = array
@@ -9174,76 +9167,6 @@ stopResidWorkerTask:
 .done 
     movem.l (sp)+,d0-a6
     rts
-
- if COUNTERS
-***************************************************************************
-* Insertion sort 
-*
-* in:
-*  a0 = array of string pointers
-*  d0 = length of the array, unsigned 16-bit
-* out:
-*  a0 = sorted array
-.sort
-	cmp	#1,d0
-	bls.b	.x
-	movem.l d1/d2/d3/d6/d7/a1/a2,-(sp)
-	moveq	#1,d1 
-.sortLoopOuter
-	move	d1,d2
-.sortLoopInner
-	move	d2,d3
-	;lsl	#2,d3   * 4
-    mulu    #12,d3  * element is 12 bytes
-	;movem.l	-12(a0,d3),a1/a2
-    lea     -12(a0,d3),a1
-    lea     -12+12(a0,d3),a2
-.strCmp 
-    move.l  4(a1),d6    * counter 1
-    move.l  4(a2),d7    * counter 2
-;	cmp.l	d6,d7
-;	blo.b	.swap
-;	tst.b	d6
-;	beq.b	.exitLoop
-;	tst.b	d7
-;	beq.b	.exitLoop
-;	cmp.b	d6,d7
-;	beq.b	.strCmp
-	cmp.l	d6,d7
-	bhi.b	.exitLoop
-.swap
-    ; swap items
-    lea     -12(a0,d3),a1
-    lea     -12+12(a0,d3),a2
-    move.l  (a1),-(sp)
-    move.l  4(a1),-(sp)
-    move.l  8(a1),-(sp)
-
-    move.l  (a2),(a1)
-    move.l  4(a2),4(a1)
-    move.l  8(a2),8(a1)
-
-    move.l  (sp)+,8(a2)
-    move.l  (sp)+,4(a2)
-    move.l  (sp)+,0(a2)
-
-;	movem.l	-12(a0,d3),a1/a2
-;	exg	a1,a2
-;	movem.l	a1/a2,-12(a0,d3)
-	
-	subq	#1,d2
-;	bra.b 	.sortLoopInner
-	bne.b	.sortLoopInner	
-.exitLoop
-	addq	#1,d1
-	cmp 	d0,d1
-	bne.b 	.sortLoopOuter
-    movem.l (sp)+,d1/d2/d3/d6/d7/a1/a2
-.x	rts
-
-
- endif
-
 
 * Playback task
 * Not actually used for playback at the moment since 
@@ -9360,7 +9283,6 @@ residWorkerEntryPoint
 
     SPRINT  "task:active"
 .loop
-    move.l  4.w,a6
     move.l  #SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D,d0
     jsr     _LVOWait(a6)
     and.l   #SIGBREAKF_CTRL_C,d0
