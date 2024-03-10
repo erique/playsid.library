@@ -9752,7 +9752,7 @@ dmawait
     lsl.l   #2,d0  * do 4 frames
     move.l  #(4*SAMPLE_BUFFER_SIZE),d1 * buffer limit
     lea     residData,a0
-    ;;jsr     (a4)    * call clock routine
+    jsr     (a4)    * call clock routine
     move.l  (sp)+,d6
 
     ;----------------------------------
