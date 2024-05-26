@@ -125,8 +125,8 @@ Changelog
             - Library compatible with kick 1.3.
             - Allow "Oversample" modes to work with AHI.
             - Enhanced environment variables for more control.
-- 2024-03   - Support for 3SID files with 9 SID channels, 
+- 2024-05   - Support for 3SID files with 9 SID channels, 
   v1.7        in reSID mode. In Paula mode SID1 uses 14-bit out, 
               SIDs 2 and 3 use 8-bit outputs.        
-            - Some reSID speed optimizations, about 8% faster on
+            - Some reSID speed optimizations, about 18% faster on
               68060 than before. 
