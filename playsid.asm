@@ -8724,6 +8724,7 @@ residData3     ds.b    resid_SIZEOF
 *   d1 = period value used
 *   a0 = audio buffer pointer sid
 *   a1 = same as a0 or audio buffer pointer for sid 2
+*   a2 = null or audio buffer pointer for sid 3
 @GetResidAudioBuffer
     move.l  sidBufferAHi,a0
     move.l  a0,a1
@@ -8731,6 +8732,12 @@ residData3     ds.b    resid_SIZEOF
     beq     .1
     move.l  sid2BufferAHi,a1
 .1
+    sub.l   a2,a2
+    tst.w   psb_Sid3Address(a6)
+    beq     .2
+    move.l  sid3BufferAHi,a2
+.2
+
     move.l  psb_SamplesPerFrame(a6),d0
     lsr.l   #7,d0
     move.l  #PAULA_PERIOD,d1
