@@ -12,7 +12,8 @@ CFLAGS := -O2 -g -noixemul -m68020 -mregparm=4 -fomit-frame-pointer -DPLAYSID
 SOURCE   := playsid.asm
 INCLUDES := playsid_libdefs.i external.asm resid-68k/resid-68k.s resid-68k/resid-68k.i
 
-TARGET   := playsid.library test_blaster
+TARGET   := playsid.library 
+#test_blaster
 LISTFILE := playsid.txt
 
 ##

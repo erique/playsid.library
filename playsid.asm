@@ -136,8 +136,8 @@ SPRINT  macro
 *=======================================================================*
 *	EXTERNAL REFERENCES						*
 *=======================================================================*
-		xref	_custom,_ciaa,_ciab
-		xref	@AllocEmulAudio,@FreeEmulAudio,@ReadIcon
+		;xref	_custom,_ciaa,_ciab
+		;xref	@AllocEmulAudio,@FreeEmulAudio,@ReadIcon
 
 		xref	_sid_init,_sid_exit,_sid_write_reg_record,_sid_write_reg_playback
 
