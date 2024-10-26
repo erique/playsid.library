@@ -12,6 +12,7 @@ output methods:
 - The original SID emulation by Per Sundell & Ron Birk (kick 1.3, 68000)
 - The reSID emulation engine by Dag Lem (68060 or similar)
 - SIDBlaster-USB, a device that uses a SID chip for sound (kick 2.0+, 68020)
+- ZorroSID, a zorro card with a SID chip
 
 To use, copy "playsid.library" into LIBS:, replacing the original
 version. By default it will use the original SID emulation mode.
@@ -24,8 +25,8 @@ HippoPlayer also provides additional integration in the user interface.
 Configuring with environment variables
 --------------------------------------
 - Set operating mode: normal/classic mode, reSID 6581, reSID 8580, 
-  reSID auto detect or SIDBlaster USB
-  Variable: "PlaySIDMode", values: "Norm,6581,8580,Auto,Sidb"
+  reSID auto detect, SIDBlaster USB, or ZorroSID
+  Variable: "PlaySIDMode", values: "Norm,6581,8580,Auto,Sidb,Zorr"
 
 - Set reSID mode: normal, oversample 2x, 3x, 4x
   Variable: "PlaySIDreSIDMode", values: "Norm,Ovs2,Ovs3,Ovs4"
@@ -93,6 +94,21 @@ is not usable with SIDBlaster.
 SIDBlaster driver and integration by Erique
 
 
+ZorroSID
+--------
+
+ZorroSID is a zorro compatible card with a SID chip.
+The card should be configured to be at address $EE0000.
+
+For a MMU enabled system you need to configure the
+memory range properly. This can be done by adding
+the following line to file ENVARC:MMU-Configuration:
+"SetCacheMode from 0xEE0000 size 0x100 valid cacheinhibit io"
+
+Digisamples will not be heard. The playsid.library sample handling 
+is not usable with ZorroSID.
+
+
 Changelog
 ---------
 - 2022-10: Initial version, reSID v0.16
@@ -130,3 +146,5 @@ Changelog
               SIDs 2 and 3 use 8-bit outputs.        
             - Some reSID speed optimizations, about 18% faster on
               68060 than before. 
+- 2024-11   - Support for ZorroSID
+  v1.8

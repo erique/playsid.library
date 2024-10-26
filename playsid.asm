@@ -361,13 +361,19 @@ AutoInitFunction
         move.l  d0,psb_DOSBase(a5)
         move.l  a5,a6
         bsr     GetEnvSettingsPre
-
+       
         cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
         bne.b   .noBlaster
         bsr     start_sid_blaster
 		tst.l	d0
         bne    .Exit
 .noBlaster
+        cmp.w   #OM_ZORROSID,psb_OperatingMode(a6)
+        bne.b   .noZorroSid
+        bsr     init_zorrosid
+        tst.l   d0
+        bne     .Exit
+.noZorroSid 
 
         bsr	    AllocEmulMem
 		tst.l	d0
@@ -463,6 +469,8 @@ GetEnvMode:
     beq     .4    
     cmp.l   #"sidb",d0
     beq     .5
+    cmp.l   #"zorr",d0
+    beq     .6
     bra     .1 * default
 .x  rts
 
@@ -489,6 +497,11 @@ GetEnvMode:
 .5
     DPRINT  "PlaySIDMode=SIDBlaster"
     moveq   #OM_SIDBLASTER_USB,d0
+    bsr     @SetOperatingMode
+    rts
+.6
+    DPRINT  "PlaySIDMode=ZorroSID"
+    moveq   #OM_ZORROSID,d0
     bsr     @SetOperatingMode
     rts
 
@@ -5197,7 +5210,9 @@ writeSIDRegister:
     rts
 .out
     cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a2)
-    beq.b   write_sid_reg
+    beq     write_sid_reg
+    cmp.w   #OM_ZORROSID,psb_OperatingMode(a2)
+    beq     write_zorrosid_reg
 
     * OM_RESID_6581, OM_RESID_8580
 
@@ -5239,7 +5254,7 @@ writeSID2Register:
     rts
 .out
     cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a2)
-    beq.b   .x
+    bhs.b   .x
 
     * OM_RESID_6581, OM_RESID_8580
 
@@ -5268,7 +5283,7 @@ writeSID3Register:
     rts
 .out
     cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a2)
-    beq.b   .x
+    bhs.b   .x
 
     * OM_RESID_6581, OM_RESID_8580
 
@@ -5342,6 +5357,98 @@ mute_sid:
         moveq.l	#$00,d1
         jsr	_sid_write_reg
 	movem.l	(sp)+,d0-a6
+	rts
+
+*-----------------------------------------------------------------------*
+* ZorroSID
+
+    include "lvo/mmu.i"
+    include "mmu/context.i"
+
+
+init_zorrosid:
+    DPRINT  "init_zorrosid"
+    move.l  a6,-(sp)
+    
+    ;lea     $A00000,a3
+    lea     $EE0000,a3
+    move.l  a3,psb_ZorroSIDBase(a6)
+    moveq   #0,d3
+    
+    move.l  4.w,a6
+    lea     .mmuname(pc),a1
+    jsr     _LVOOldOpenLibrary(a6)
+    tst.l   d0
+    beq     .1
+    move.l  d0,a6
+
+    sub.l   a0,a0   * null, current context
+    move.l  a3,a1   * page to investigate
+    sub.l   a2,a2   * null, tags        
+    jsr     _LVOGetPropertiesA(a6)
+    DPRINT  "GetProperties=%lx"
+    * Good: D0 = MAPP_IO | MAPP_CACHEINHIBIT
+    * Bad:  D0 = MAPP_INVALID | MAPP_REPAIRABLE
+    move.l  d0,d3
+    move.l  a6,a1
+    move.l  4.w,a6
+    jsr     _LVOCloseLibrary(a6)
+.1
+    move.l  (sp)+,a6
+    btst    #MAPB_INVALID,d3
+    bne     .x
+
+    * Set filter volume
+    move.b  #15,$31(a3)  
+ if DEBUG
+    move.l  a3,d0
+    DPRINT  "ZorroSID: base=%lx"
+ endif
+    moveq   #0,d0   * ok
+    rts
+
+.x  DPRINT  "ZorroSID: range invalid"
+    moveq   #SID_ZORROSIDINVALID,d0
+    rts
+
+.mmuname dc.b    "mmu.library",0
+    even
+
+* in:
+*    d6 = data
+*    d7 = address
+write_zorrosid_reg:
+    movem.l	d0/a0,-(sp)
+    moveq   #$1f,d0
+    and     d7,d0
+    add     d0,d0
+    move.l  _PlaySidBase,a0
+    move.l  psb_ZorroSIDBase(a0),a0
+    move.b  d6,1(a0,d0.w)
+    movem.l	(sp)+,d0/a0
+    rts
+
+mute_zorrosid:
+    movem.l	d6/d7,-(sp)
+    moveq  	#$00,d7 
+    moveq  	#$00,d6
+    bsr     write_zorrosid_reg
+    moveq  	#$01,d7 
+    moveq  	#$00,d6
+    bsr     write_zorrosid_reg
+    moveq  	#$07,d7 
+    moveq  	#$00,d6
+    bsr     write_zorrosid_reg
+    moveq  	#$08,d7 
+    moveq  	#$00,d6
+    bsr     write_zorrosid_reg
+    moveq  	#$0e,d7 
+    moveq  	#$00,d6
+    bsr     write_zorrosid_reg
+    moveq  	#$0f,d7 
+    moveq  	#$00,d6
+    bsr     write_zorrosid_reg
+    movem.l	(sp)+,d6/d7
 	rts
 
 *=======================================================================*
@@ -5610,6 +5717,8 @@ PlayDisable					;Turns off all Audio
 .1
         cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
         beq     mute_sid
+        cmp.w   #OM_ZORROSID,psb_OperatingMode(a6)
+        beq     mute_zorrosid
         rts
 
 *-----------------------------------------------------------------------*
@@ -6078,8 +6187,10 @@ EndOfLibrary
 @FreeEmulAudio	jmp	@FreeEmulAudio_impl.l
 
 @AllocEmulAudio	
-        * No audio alloc with SIDBlaster
+        * No audio alloc with SIDBlaster, ZorroSID
         cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
+        beq     .3
+        cmp.w   #OM_ZORROSID,psb_OperatingMode(a6)
         beq     .3
 
         * Allocate audio in classic mode  
