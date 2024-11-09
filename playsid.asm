@@ -17,19 +17,6 @@ ENABLE_14BIT    = 1
 ENABLE_REGDUMP  = 0
 REGDUMP_SIZE    = 100000
 
-; Set to 1 to do playback in interrupts.
-; This makes the audio smooth and uninterruptible,
-; but may hang the whole system if CPU runs low.
-
-; Set to 0 to do playback in a task.
-; This will not hang the system but music playback
-; will easily be disturbed by other things happening 
-; in the system. 
-  ifnd ENABLE_LEV4PLAY
-ENABLE_LEV4PLAY = 1
-  endif
-
-
 * Period should be divisible by 64 for bug free 14-bit output
 PAULA_PERIOD=128    
 PAL_CLOCK=3546895
@@ -39,14 +26,10 @@ PLAYBACK_FREQ = PAL_CLOCK/PAULA_PERIOD
 * "single speed"
 * reSID update frequency 50 Hz:
 * Samples per 1/50s = 554.20234375
-* Samples per 1/50s as 22.10 FP = 567503.2
-SAMPLES_PER_FRAME_50Hz =  567503
 
 * "double speed"
 * reSID update frequency 100 Hz:
 * Samples per 1/100s = 277.10117
-* Samples per 1/100s as 22.10 FP = 283751.59808
-SAMPLES_PER_FRAME_100Hz = 283752
 
 * "4-speed"
 * reSID update frequency 200 Hz:
@@ -57,14 +40,10 @@ SAMPLES_PER_FRAME_200Hz = 141876
 * "8-speed"
 * reSID update frequency 400 Hz:
 * Samples per 1/400s = 69.275292
-* Samples per 1/400s as 22.10 FP = 70937.9
-SAMPLES_PER_FRAME_400Hz = 70938
 
 * "12-speed"
 * reSID update frequency 600 Hz:
 * Samples per 1/600s = 46.18352864
-* Samples per 1/600s as 22.10 FP = 47291.93333
-SAMPLES_PER_FRAME_600Hz = 47292
 
 * Output buffer size, this needs to be big enough, exact size not important.
 * "single speed" buffer is 554 bytes
@@ -72,10 +51,10 @@ SAMPLE_BUFFER_SIZE = 600
 
 * Enable debug logging into a console window
 * Enable debug colors
-DEBUG = 1
-SERIALDEBUG = 1
+DEBUG = 0
+SERIALDEBUG = 0
 COUNTERS = 0
-TIMERS = 1
+TIMERS = 0
 
 * When playing samples with reSID scale ch4 volume with this factor
 * to get it to reSID levels
@@ -5410,7 +5389,7 @@ init_zorrosid:
     btst    #MAPB_INVALID,d3
     bne     .x
 
-    * Set filter volume
+    * Set filter volume, the same is done in the ZorroSID using deliplayer
     move.b  #15,$31(a3)  
  if DEBUG
     move.l  a3,d0
@@ -5576,7 +5555,7 @@ OpenIRQ:
 
         bsr     isResidActive
         beq     .5
-        jsr     createResidWorkerTask
+        jsr     startResid
 .5
         bsr	PlayDisable
 		moveq	#0,d0
@@ -5643,7 +5622,7 @@ CloseIRQ	tst.w	psb_TimerBFlag(a6)
 .3
         bsr     isResidActive
         beq     .noResid
-        jsr     stopResidWorkerTask
+        jsr     stopResid
 .noResid
         rts
 
@@ -9213,64 +9192,144 @@ freeResidMemory:
 .y  pop     a6
     rts
 
-createResidWorkerTask:
-    DPRINT  "createResidWorkerTask"
-    movem.l d0-a6,-(sp)
-    tst.l   residWorkerTask
-    bne     .x
-    move.l  a6,a5
 
+
+* Initialize resid playback using interrupts
+startResid:
+    SPRINT  "startResid"
+    push    a6
+    move.l  _PlaySidBase,a6
+
+    tst.l   psb_AhiMode(a6)
+    beq     .notAhi
+
+    bsr     ahiInit
+    SPRINT  "ahiInit=%ld"
+    ; TODO: ERROR case
+    tst.l   d0
+    beq     .x
+    clr.l   psb_AhiBankLeft(a6)
+    clr.l   psb_AhiBankRight(a6)
+    clr.l   psb_AhiBankMiddle(a6)
+    bsr     ahiSwitchAndFillLeftBuffer
+    bsr     ahiSwitchAndFillRightBuffer
+    bsr     ahiSwitchAndFillMiddleBuffer
+	moveq	#AHISF_IMM,d4
+    bsr     ahiPlayLeftBuffer
+    DPRINT  "left=%ld"
+	moveq	#AHISF_IMM,d4
+    bsr     ahiPlayRightBuffer
+    DPRINT  "right=%ld"
+	moveq	#AHISF_IMM,d4
+    bsr     ahiPlayMiddleBuffer
+    DPRINT  "middle=%ld"
+    bra     .continue
+
+.notAhi
+    SPRINT  "normal init"
+    move.l  #residLevel1Intr,residLevel4Intr1Data
+
+    * Max softint priority
+    move.b  #32,LN_PRI+residLevel1Intr
+    * Store this for easy access
+    move.l  _PlaySidBase,residLevel1Data
+
+    SPRINT  "clear intena+intreq+dmacon"
+    ; Stop all 
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
+    move.w  #DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
+
+ if DEBUG
+    move.l  #residLevel1HandlerDebug,residLevel1HandlerPtr
+ else
+    move.l  #residLevel1Handler,residLevel1HandlerPtr
+    tst.w   psb_Debug(a6)
+    beq     .1
+    move.l  #residLevel1HandlerDebug,residLevel1HandlerPtr
+.1
+ endif
+    SPRINT  "SetIntVector"
+
+    lea     residLevel4Intr1,a1
+    moveq   #INTB_AUD0,d0		; Allocate Level 4
     move.l  4.w,a6
-    sub.l   a1,a1
-    jsr     _LVOFindTask(a6)
-    move.l  d0,mainTask
+    jsr     _LVOSetIntVector(a6)
+    move.l  d0,oldVecAud0
 
-    moveq   #0,d0
-    moveq   #SIGF_SINGLE,d1
-    jsr     _LVOSetSignal(a6)
+    move.l  _PlaySidBase,a6
 
-    move.l  psb_DOSBase(a5),a6
-    move.l  #.tags,d1
-    jsr     _LVOCreateNewProcTagList(a6)
+    * CH0 = high 8 bits - full volume
+    * CH3 = low 6 bits  - volume 1
+    * CH1 = high 8 bits - full volume
+    * CH2 = low 6 bits  - volume 1
+    move    #PAULA_PERIOD,$a6+$dff000
+    move    #PAULA_PERIOD,$b6+$dff000
+    move    #PAULA_PERIOD,$c6+$dff000
+    move    #PAULA_PERIOD,$d6+$dff000
+    
+    bsr     residSetVolume
+    bsr     switchAndFillBuffer
+    bsr     dmawait     * probably not needed
 
-    * Wait here until the task is fully running
-    moveq   #SIGF_SINGLE,d0
-    jsr     _LVOWait(a6)
+    SPRINT  "enable audio interrupt"
+
+  ifne ENABLE_14BIT
+    move    #DMAF_SETCLR!DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
+  else
+    move    #DMAF_SETCLR!DMAF_AUD0!DMAF_AUD1,dmacon+$dff000
+  endif
+   
+    move.w  #INTF_SETCLR!INTF_AUD0,intena+$dff000
+
+    ; buffer A now plays
+    ; interrupt will be triggered soon to queue the next sample
+    ; wait for the interrupt and queue buffer B
+    ; fill buffer B
+    ; after A has played, B will start
+    ; interrupt will be triggered
+    ; queue buffer A
+    ; fill A
+    ; ... etc
+.continue
+    pop     a6
+    moveq   #1,d0       * ok
+    rts
 .x
-    movem.l (sp)+,d0-a6
+    pop     a6
+    moveq   #0,d0       * fail
     rts
 
-.tags
-    dc.l    NP_Entry,residWorkerEntryPoint
-    dc.l    NP_Name,.workerTaskName
-    dc.l    TAG_END
 
-.workerTaskName
-    dc.b    "reSID",0
-    even
+* Stop resid playback
+stopResid:
+    SPRINT  "stopResid"
+    push    a6
+    move.l  _PlaySidBase,a6
+    tst.l   psb_AhiMode(a6)
+    beq     .notAhi2
+    bsr     ahiStop
+    pop     a6
+    SPRINT  "ahi stopped"
+    rts    
 
-stopResidWorkerTask:    
-    DPRINT  "stopResidWorkerTask"    
-    movem.l d0-a6,-(sp)
-    tst.l   residWorkerTask
-    beq     .done
+.notAhi2
+    ; First stop audio interrupt, as stopping DMA first would go into
+    ; manual mode and start triggering audio interrupts after every word.
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
+    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
+    move    #$f,dmacon+$dff000
+    bsr     residClearVolume
+
+    moveq	#INTB_AUD0,d0
+    move.l  oldVecAud0(pc),a1
     move.l  4.w,a6
-    moveq   #0,d0
-    moveq   #SIGF_SINGLE,d1
-    jsr     _LVOSetSignal(a6)
+    jsr     _LVOSetIntVector(a6)
+    move.l  d0,oldVecAud0
 
-    ; Send a break to the worker
-    move.l  residWorkerTask(pc),a1
-    move.l  #SIGBREAKF_CTRL_C,d0
-    jsr     _LVOSignal(a6)
+    SPRINT  "stopped"
 
-    ; Wait for confirmation
-    moveq   #SIGF_SINGLE,d0
-    jsr     _LVOWait(a6)
-
- if COUNTERS
-
-    
+ if COUNTERS    
     jsr     sid_get_counters
 * a2 = array
 * d3 = count - 1
@@ -9306,180 +9365,7 @@ stopResidWorkerTask:
     fmove.l  fp0,d2
     DPRINT  "time=%ldms frames=%ld avg=%ldus"
  endif
-
-.done 
-    movem.l (sp)+,d0-a6
-    rts
-
-* Playback task
-* Not actually used for playback at the moment since 
-* the default mode is interrupt playback instead of task playback.
-residWorkerEntryPoint
-    SPRINT  "task:starting"
-    move.l  4.w,a6
-    sub.l   a1,a1
-    jsr     _LVOFindTask(a6)
-    move.l  d0,residWorkerTask
-
-    move.l  _PlaySidBase,a6
-    tst.l   psb_AhiMode(a6)
-    beq     .notAhi
-
-    bsr     ahiInit
-    SPRINT  "task:ahiInit=%ld"
-    ; TODO: ERROR case
-    tst.l   d0
-    beq     .x
-    clr.l   psb_AhiBankLeft(a6)
-    clr.l   psb_AhiBankRight(a6)
-    clr.l   psb_AhiBankMiddle(a6)
-    bsr     ahiSwitchAndFillLeftBuffer
-    bsr     ahiSwitchAndFillRightBuffer
-    bsr     ahiSwitchAndFillMiddleBuffer
-	moveq	#AHISF_IMM,d4
-    bsr     ahiPlayLeftBuffer
-    DPRINT  "task:left=%ld"
-	moveq	#AHISF_IMM,d4
-    bsr     ahiPlayRightBuffer
-    DPRINT  "task:right=%ld"
-	moveq	#AHISF_IMM,d4
-    bsr     ahiPlayMiddleBuffer
-    DPRINT  "task:middle=%ld"
-    bra     .continue
-
-.notAhi
-    SPRINT  "task:normal init"
-
- ifne ENABLE_LEV4PLAY 
-    move.l  #residLevel1Intr,residLevel4Intr1Data
- else
-    move.l  d0,residLevel4Intr1Data
- endif
-    * Max softint priority
-    move.b  #32,LN_PRI+residLevel1Intr
-    * Store this for easy access
-    move.l  _PlaySidBase,residLevel1Data
-
-    SPRINT  "task:clear intena+intreq+dmacon"
-    ; Stop all 
-    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
-    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
-    move.w  #DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
-
- if DEBUG
-    move.l  #residLevel1HandlerDebug,residLevel1HandlerPtr
- else
-    move.l  #residLevel1Handler,residLevel1HandlerPtr
-    tst.w   psb_Debug(a6)
-    beq     .1
-    move.l  #residLevel1HandlerDebug,residLevel1HandlerPtr
-.1
- endif
-    SPRINT  "task:SetIntVector"
-
-    lea     residLevel4Intr1,a1
-    moveq   #INTB_AUD0,d0		; Allocate Level 4
-    move.l  4.w,a6
-    jsr     _LVOSetIntVector(a6)
-    move.l  d0,oldVecAud0
-
-    move.l  _PlaySidBase,a6
-
-    * CH0 = high 8 bits - full volume
-    * CH3 = low 6 bits  - volume 1
-    * CH1 = high 8 bits - full volume
-    * CH2 = low 6 bits  - volume 1
-    move    #PAULA_PERIOD,$a6+$dff000
-    move    #PAULA_PERIOD,$b6+$dff000
-    move    #PAULA_PERIOD,$c6+$dff000
-    move    #PAULA_PERIOD,$d6+$dff000
-    
-    bsr     residSetVolume
-    bsr     switchAndFillBuffer
-    bsr     dmawait     * probably not needed
-
-    SPRINT  "task:enable audio interrupt"
-
-  ifne ENABLE_14BIT
-    move    #DMAF_SETCLR!DMAF_AUD0!DMAF_AUD1!DMAF_AUD2!DMAF_AUD3,dmacon+$dff000
-  else
-    move    #DMAF_SETCLR!DMAF_AUD0!DMAF_AUD1,dmacon+$dff000
-  endif
-   
-    move.w  #INTF_SETCLR!INTF_AUD0,intena+$dff000
-
-    ; buffer A now plays
-    ; interrupt will be triggered soon to queue the next sample
-    ; wait for the interrupt and queue buffer B
-    ; fill buffer B
-    ; after A has played, B will start
-    ; interrupt will be triggered
-    ; queue buffer A
-    ; fill A
-    ; ... etc
-.continue
-    ; Signal that we're running
-    move.l  4.w,a6
-    move.l  mainTask(pc),a1
-    moveq   #SIGF_SINGLE,d0
-    jsr     _LVOSignal(a6)
-
-    SPRINT  "task:active"
-.loop
-    move.l  #SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D,d0
-    jsr     _LVOWait(a6)
-    and.l   #SIGBREAKF_CTRL_C,d0
-    bne.b   .x
-
-    SPRINT  "task:signal"
-
-  ifeq ENABLE_LEV4PLAY
-    push    a6
-    move.l  _PlaySidBase,a6
-    bsr     switchAndFillBuffer
     pop     a6
-  endif
-    bra     .loop
-
-.x
-    SPRINT  "task:stopping"
-
-    move.l  _PlaySidBase,a6
-    tst.l   psb_AhiMode(a6)
-    beq     .notAhi2
-    bsr     ahiStop
-
-    SPRINT  "task:ahi stopped"
-    
-    move.l  4.w,a6
-    jsr     _LVOForbid(a6)
-    jsr     _LVODisable(a6)
-    bra     .continueExit
-
-.notAhi2
-    move.l  4.w,a6
-    jsr     _LVOForbid(a6)
-    jsr     _LVODisable(a6)
-
-    ; First stop audio interrupt, as stopping DMA first would go into
-    ; manual mode and start triggering audio interrupts after every word.
-    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intena+$dff000
-    move.w  #INTF_AUD0!INTF_AUD1!INTF_AUD2!INTF_AUD3,intreq+$dff000
-    move    #$f,dmacon+$dff000
-    bsr     residClearVolume
-
-    moveq	#INTB_AUD0,d0
-    move.l  oldVecAud0(pc),a1
-    jsr     _LVOSetIntVector(a6)
-    move.l  d0,oldVecAud0
-
-.continueExit
-    clr.l   residWorkerTask
-
-    move.l  mainTask(pc),a1
-    moveq   #SIGF_SINGLE,d0
-    jsr     _LVOSignal(a6)
-    SPRINT  "task:stopped"
     rts
 
 residSetVolume:
@@ -9529,27 +9415,18 @@ residClearVolume:
 *   a6 = execbase
 residLevel4Handler1
     move.w  #INTF_AUD0,intreq(a0)
- ifeq ENABLE_LEV4PLAY
-    * a1 = task
-    move.l  #SIGBREAKF_CTRL_D,d0
-    jmp     _LVOSignal(a6)
- else
     * a1 = residLevel1Intr
     basereg residLevel1Intr,a1
     
     * Check if lev1 is done with the previous frame
     tst.b   framePending(a1)
     beq.b   .1
- ifne DEBUG
-    ;move    #$f00,$dff180
- endif
     rts
 .1
     * Start processing a new frame
     st      framePending(a1)
     jmp     _LVOCause(a6)
     endb    a1
- endif
 
 
 * Level 1 interrupt handler, debug colors
@@ -10086,18 +9963,10 @@ sid3BufferALo     dc.l    0
 sid3BufferBHi     dc.l    0
 sid3BufferBLo     dc.l    0
 
-mainTask          dc.l    0
-residWorkerTask:  dc.l    0
 oldVecAud0        dc.l    0
-residTimerRequest      ds.b    IOTV_SIZE
-residClock             ds.b    EV_SIZE
-framePending           dc.w    0
-  ifne DEBUG
-bob1
-     dc.w   $0f0
-  endif
+framePending      dc.w    0
 
-
+* Level 4 audio interrupt for resid
 residLevel4Intr1	
         dc.l	0		; Audio Interrupt
         dc.l	0
@@ -10112,6 +9981,7 @@ residLevel4Name1
     dc.b    "reSID Audio",0
     even
 
+* Level 1 interrupt for resid, triggered by above
 residLevel1Intr
       	dc.l	0
         dc.l	0
@@ -10635,9 +10505,6 @@ plainSaveFile:
   endif
 
     section .bss,bss
-
-workerTaskStack     ds.b    4096
-workerTaskStruct    ds.b    TC_SIZE
 
   ifne ENABLE_REGDUMP
 regDumpTime         ds.w    1
