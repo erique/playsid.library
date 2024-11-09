@@ -72,9 +72,10 @@ SAMPLE_BUFFER_SIZE = 600
 
 * Enable debug logging into a console window
 * Enable debug colors
-DEBUG = 0
-SERIALDEBUG = 0
+DEBUG = 1
+SERIALDEBUG = 1
 COUNTERS = 0
+TIMERS = 1
 
 * When playing samples with reSID scale ch4 volume with this factor
 * to get it to reSID levels
@@ -406,6 +407,11 @@ AutoInitFunction
         blo.b   .3
         jsr     _LVOCacheClearU(a6)
 .3
+
+ ifne TIMERS
+        jsr     openTimer
+ endif
+
         * Status: OK
         moveq	#0,d0
 .Exit
@@ -764,6 +770,12 @@ convertHexTextToNumber:
         move.l  a6,-(sp)
         move.l  psb_DOSBase(a6),a6
         jsr     saveDump
+        move.l  (sp)+,a6
+  endif
+
+  ifne TIMERS        
+        move.l  a6,-(sp)
+        jsr     closeTimer
         move.l  (sp)+,a6
   endif
 
@@ -5454,7 +5466,7 @@ mute_zorrosid:
 *=======================================================================*
 *	INTERRUPT HANDLING ROUTINES					*
 *=======================================================================*
-OpenIRQ		
+OpenIRQ:
         DPRINT  "OpenIRQ"
         move.l	a6,timerAIntrPSB
 		move.l	a6,PlayIntrPSB
@@ -9177,6 +9189,9 @@ allocResidMemory:
     rts
 
 resetResid:
+ ifne TIMERS
+    jsr     reset_timers
+ endif
     move.l  psb_reSID(a6),a0
     jsr     sid_reset
     move.l  psb_reSID2(a6),a0
@@ -9280,6 +9295,16 @@ stopResidWorkerTask:
     dbf     d3,.cl
    
     lea     20(sp),sp
+ endif
+
+ ifne TIMERS
+    fmove.d  _timer1,fp0
+    fmove.l  fp0,d0
+    divu.l   #1000,d0
+    move.l   _counter1,d1
+    fdiv.l   d1,fp0
+    fmove.l  fp0,d2
+    DPRINT  "time=%ldms frames=%ld avg=%ldus"
  endif
 
 .done 
@@ -9563,7 +9588,16 @@ residLevel1Handler:
 .xx
     jsr     Play64
 .x
+ ifne TIMERS
+    jsr     startMeasure
     bsr.b   switchAndFillBuffer
+    jsr     stopMeasure
+    fadd.d  _timer1,fp2
+    fmove.d fp2,_timer1
+    addq.l  #1,_counter1
+ else
+    bsr.b   switchAndFillBuffer
+ endif
     clr.w   framePending
    	movem.l (sp)+,d2-d7/a2-a4/a6
     rts
@@ -10740,5 +10774,89 @@ CloseDebug:
 _DOSBase        ds.l    1
 _output			ds.l 	1
 _debugDesBuf	ds.b	1024
- endif ;; DEBUG
+_timerOpen      ds.w    1
+_timerRequest	ds.b    IOTV_SIZE
+_clockStart     ds.b    EV_SIZE
+_clockEnd       ds.b    EV_SIZE
+
+openTimer
+    DPRINT  "openTimer"
+	move.l	4.w,a0
+	move	LIB_VERSION(a0),d0
+	cmp	#36,d0
+	blo.b	.x
+	move.l	a0,a6
+
+	lea	.timerDeviceName(pc),a0
+	moveq	#UNIT_ECLOCK,d0
+	moveq	#0,d1
+	lea	_timerRequest,a1
+	jsr	_LVOOpenDevice(a6)		; d0=0 if success
+	move.l	IO_DEVICE+_timerRequest,d1
+    DPRINT  "OpenDevice=%ld base=%lx"
+	tst.l	d0
+	seq	_timerOpen
+.x	rts
+
+.timerDeviceName dc.b	"timer.device",0
+	even
+
+reset_timers:
+    clr.l   _timer1
+    clr.l   _timer1+4
+    clr.l   _counter1
+    rts
+
+_timer1     ds.b    8  * dbl precision number
+_counter1   dc.l    0
+
+closeTimer
+	tst.b	_timerOpen
+	beq.b	.x
+	clr.b	_timerOpen
+	move.l	4.w,a6
+	lea	_timerRequest,a1
+	jsr _LVOCloseDevice(a6)
+.x	rts
+
+startMeasure
+	tst.b   _timerOpen
+	beq.b	.x
+	push	a6	
+	move.l	IO_DEVICE+_timerRequest,a6
+	lea	_clockStart,a0
+	jsr     _LVOReadEClock(a6)
+	pop 	a6
+.x	rts
+
+; out: fp2: difference in microsecs
+stopMeasure
+	tst.b	_timerOpen
+	bne.b	.x
+	moveq	#-1,d0
+	rts
+.x	pushm	d2-d4/a6
+	move.l	IO_DEVICE+_timerRequest,a6
+	lea	_clockEnd,a0
+	jsr _LVOReadEClock(a6)
+    * D0 will be 709379 for PAL.
+    fmove.l d0,fp0          * ticks/s
+    fdiv.l  #1000*1000,fp0  * ticks/us
+
+    fmove.x #4294967296,fp3         * 1<<32
+    fmove.l EV_HI+_clockEnd,fp2
+    fmul    fp3,fp2                 * <<32
+    fadd.l  EV_LO+_clockEnd,fp2
+    fmove.l EV_HI+_clockStart,fp1
+    fmul    fp3,fp1                 * <<32
+    fadd.l  EV_LO+_clockStart,fp1
+    fsub    fp1,fp2
+    fdiv    fp0,fp2
+
+	popm	d2-d4/a6
+	rts
+
+  endif
+
+endif ;; DEBUG
 
