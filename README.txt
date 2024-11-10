@@ -101,9 +101,16 @@ ZorroSID is a zorro compatible card with a SID chip.
 The card should be configured to be at address $EE0000.
 
 For a MMU enabled system you need to configure the
-memory range properly. This can be done by adding
+memory range properly. If you have Thor's MMU libraries
+and related tools installed this can be done for example by adding
 the following line to file ENVARC:MMU-Configuration:
-"SetCacheMode from 0xEE0000 size 0x100 valid cacheinhibit io"
+"SetCacheMode from 0xEE0000 size 0x10000 valid cacheinhibit io"
+
+.. or by running the shell command:
+"MuSetCacheMode from 0xEE0000 size 0x10000 valid cacheinhibit io"
+
+You can also use the EnableSID and DisableSID commands 
+found in the FrodoV2.4.lha archive on aminet.
 
 Digisamples will not be heard. The playsid.library sample handling 
 is not usable with ZorroSID.
