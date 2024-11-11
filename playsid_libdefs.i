@@ -21,7 +21,7 @@ PSIDLIB_NAME	MACRO
 		ENDM
 
 PSIDLIB_IDSTRING MACRO
-		dc.b	"playsid.library 1.5 (6.3.2023) reSID+SIDBlaster",13,10,0
+		dc.b	"playsid.library 1.5 (13.4.2023) reSID+SIDBlasterSERIAL",13,10,0
 		ENDM
 
 PSIDLIB_COPYRIGHT MACRO

@@ -1,0 +1,15 @@
+#  $Id: Makefile.in,v 1.1.2.1 2005/03/26 17:40:21 martin Exp $
+#
+#  Makefile.in for Void sound card driver
+#
+
+VPATH		= @srcdir@
+
+srcdir		= @srcdir@
+
+DRIVER		= ac97.audio
+MODEFILE	= ac97
+
+OBJECTS		= ac97-init.o ac97-main.o void-playslave.o void-accel.o
+
+include ../Common/Makefile.common

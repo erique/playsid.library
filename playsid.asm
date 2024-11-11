@@ -126,7 +126,7 @@ SPRINT  macro
         include lvo/timer_lib.i
         include devices/timer.i
         include	devices/ahi.i
-        include	devices/ahi_lib.i
+        include	lvo/ahi_lib.i
     	include	dos/dostags.i
 
 	LIST
@@ -287,7 +287,7 @@ AutoInitFunction
 		move.w	d0,psb_ChannelEnable+4(a6)
 		move.w	d0,psb_ChannelEnable+6(a6)
 		move.w	d0,psb_AudioDevice(a6)
-        move.w  #-1,psb_OperatingMode(a6)
+        move.w  #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
 
 		clr.w	psb_TimeSeconds(a6)		;Set time to 00:00
 		clr.w	psb_TimeMinutes(a6)
