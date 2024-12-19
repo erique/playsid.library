@@ -15,14 +15,14 @@ PLAYSID_LIBDEFS_I SET  1
 	include "git.gen.i"
 
 PSIDLIB_VERSION		equ	1
-PSIDLIB_REVISION	equ	7
+PSIDLIB_REVISION	equ	8
 
 PSIDLIB_NAME	MACRO
 		dc.b	"playsid.library",0
 		ENDM
 
 PSIDLIB_IDSTRING MACRO
-		dc.b	"playsid.library 1.8 (Nov 2024) reSID+SIDBlaster+ZorroSID (git:"
+		dc.b	"playsid.library 1.8 (Dec 2024) reSID+SIDBlaster+ZorroSID (git:"
 		GIT
 		dc.b	")",13,10,0
 		ENDM
