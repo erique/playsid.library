@@ -3760,16 +3760,19 @@ Envelopes
 		move.l	psb_Enve1(a6),a0
 		moveq	#$00,d0
 		bsr	    .Calculate
+        move.w  d0,psb_Envelope1(a6)
         mulu.w  psb_Volume(a6),d0
         lsr     #6,d0
 		move.w	d0,$dff0a8
 		move.l	psb_Enve2(a6),a0
 		bsr 	.Calculate
+        move.w  d0,psb_Envelope2(a6)
         mulu.w  psb_Volume(a6),d0
         lsr     #6,d0
 		move.w	d0,$dff0b8
 		move.l	psb_Enve3(a6),a0
 		bsr.s	.Calculate
+        move.w  d0,psb_Envelope3(a6)
         mulu.w  psb_Volume(a6),d0
         lsr     #6,d0
 		move.w	d0,$dff0c8
@@ -4690,102 +4693,127 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 
 .D420:
 	move.w	#$D400,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D421:
 	move.w	#$D401,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D422:
 	move.w	#$D402,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D423:
 	move.w	#$D403,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D424:
 	move.w	#$D404,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D425:
 	move.w	#$D405,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D426:
 	move.w	#$D406,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D427:
 	move.w	#$D407,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D428:
 	move.w	#$D408,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D429:
 	move.w	#$D409,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D42A:
 	move.w	#$D40A,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D42B:
 	move.w	#$D40B,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D42C:
 	move.w	#$D40C,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D42D:
 	move.w	#$D40D,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D42E:
 	move.w	#$D40E,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D42F:
 	move.w	#$D40F,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D430:
 	move.w	#$D410,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D431:
 	move.w	#$D411,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D432:
 	move.w	#$D412,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D433:
 	move.w	#$D413,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D434:
 	move.w	#$D414,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D435:
 	move.w	#$D15,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D436:
 	move.w	#$D416,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D437:
 	move.w	#$D417,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 .D438:
 	move.w	#$D418,d7
+	move.b	d6,$20(a0,d7.l)
     bsr     writeSID2Register
     Next_Inst
 
@@ -9525,6 +9553,7 @@ switchAndFillBuffer:
     * Poke ch4 if not used for digisamples
     move    d0,$d4+$dff000   * words
 .2
+    bsr     grabResidEnvelopes
     rts
 
 .sid2
@@ -9574,6 +9603,8 @@ switchAndFillBuffer:
     move    d0,$d4+$dff000   * words
     move    d0,$b4+$dff000   * words
     move    d0,$c4+$dff000   * words
+
+    bsr     grabResidEnvelopes
     rts
 
 * Three SIDs
@@ -9643,7 +9674,30 @@ switchAndFillBuffer:
     move    d0,$c4+$dff000   * words
     rts
 
+grabResidEnvelopes:
+    move.l  _PlaySidBase,a1
+    move.l  psb_reSID(a1),a0
+    move.w  resid_envelope1+envelope_counterHi(a0),d0
+    lsr     #2,d0
+    move.w  d0,psb_Envelope1(a1)
+    move.w  resid_envelope2+envelope_counterHi(a0),d0
+    lsr     #2,d0
+    move.w  d0,psb_Envelope2(a1)
+    move.w  resid_envelope3+envelope_counterHi(a0),d0
+    lsr     #2,d0
+    move.w  d0,psb_Envelope3(a1)
 
+    move.l  psb_reSID2(a1),a0
+    move.w  resid_envelope1+envelope_counterHi(a0),d0
+    lsr     #2,d0
+    move.w  d0,psb_Envelope4(a1)
+    move.w  resid_envelope2+envelope_counterHi(a0),d0
+    lsr     #2,d0
+    move.w  d0,psb_Envelope5(a1)
+    move.w  resid_envelope3+envelope_counterHi(a0),d0
+    lsr     #2,d0
+    move.w  d0,psb_Envelope6(a1)
+    rts
 
 
 dmawait
