@@ -52,9 +52,16 @@ SAMPLE_BUFFER_SIZE = 600
 * Enable debug logging into a console window
 * Enable debug colors
 DEBUG = 0
+* Log to serial 
 SERIALDEBUG = 0
+* Enable profiling counters
 COUNTERS = 0
+* Enable average performance calculation timer
 TIMERS = 0
+* Enable logging of register writes
+LOG_WRITES = 0
+* Enable logging of ADSR and envelopes
+LOG_ADSR_ENV = 0
 
 * When playing samples with reSID scale ch4 volume with this factor
 * to get it to reSID levels
@@ -1305,6 +1312,9 @@ Play64:
 
   ifne ENABLE_REGDUMP
         addq.w  #1,regDumpTime
+  endif
+  ifne LOG_WRITES
+        addq.l  #1,tick
   endif
 		rts
 
@@ -5250,12 +5260,153 @@ writeSIDRegister:
 
     move.b  d6,d0
     move.b  d7,d1
+
+ if LOG_WRITES
+    and.l   #$ffff,d0
+    and.l   #$ffff,d1
+    * write d0 to d1    
+
+    move.l  tick,d2
+    cmp.l   writeTick,d2
+    bne     .print
+.get
+
+    ; v2 =7..13
+    ; v3 =14..20
+   ; cmp.b   #7,d1
+   ; blo     .x
+   ; cmp.b   #13,d1
+    ;bhi     .x
+
+    ;cmp.b   #14,d1
+    ;blo     .x
+    ;cmp.b   #20,d1
+    ;bhi     .x
+
+    movem.l d0/d1,-(sp)
+
+    * get end
+    lea     outBuffer,a0
+.fe tst.b   (a0)+
+    bne     .fe
+    subq    #1,a0
+
+    * convert register offset to name
+    lea     .names,a3
+    lea     (a3,d1*2),a3
+    add     (a3),a3
+
+    move.b  (a3)+,(a0)+
+    move.b  (a3)+,(a0)+
+    move.b  (a3)+,(a0)+
+    move.b  #"=",(a0)+    
+
+    move    d0,d1
+    * convert byte into string
+    lsr.b   #4,d0
+    bsr     .hegs    
+    move.b  d1,d0
+    and.b   #$f,d0
+    bsr     .hegs    
+    move.b  #" ",(a0)+
+    clr.b   (a0)
+    
+    movem.l (sp)+,d0/d1
+    bra     .x
+
+.print 
+    movem.l d0/d1,-(sp)
+    move.l  writeTick,d0
+    move.l  d2,writeTick
+    move.l  #outBuffer,d1
+    move.l  d1,a0
+    tst.b   (a0)
+    beq     .11
+    DPRINT  "%04.4lx: %s"
+.11
+    clr.b   outBuffer
+    movem.l (sp)+,d0/d1
+    bra     .get
+.x
+ endif ; LOG_WRITES
+
+
     move.l  psb_reSID(a2),a0
     jsr     sid_write
     moveq   #1,d0
     movem.l (sp)+,d0-a6
     rts
 
+ if LOG_WRITES
+* convert decimal number 0-9 into ASCII char
+.hegs	cmp.b	#9,d0
+	bhi.b	.high1
+	or.b	#'0',d0
+	move.b	d0,(a0)+
+	rts
+.high1	
+	add.b	#-10+'A',d0
+	move.b	d0,(a0)+
+	rts
+
+.names      
+    dr.w    .n0
+    dr.w    .n1
+    dr.w    .n2
+    dr.w    .n3
+    dr.w    .n4
+    dr.w    .n5
+    dr.w    .n6
+    dr.w    .n7
+    dr.w    .n8
+    dr.w    .n9
+    dr.w    .n10
+    dr.w    .n11
+    dr.w    .n12
+    dr.w    .n13
+    dr.w    .n14
+    dr.w    .n15
+    dr.w    .n16
+    dr.w    .n17
+    dr.w    .n18
+    dr.w    .n19
+    dr.w    .n20
+    dr.w    .n21
+    dr.w    .n22
+    dr.w    .n23
+    dr.w    .n24
+
+
+.n0     dc.b    "1FL",0
+.n1     dc.b    "1FH",0
+.n2     dc.b    "1PL",0
+.n3     dc.b    "1PH",0
+.n4     dc.b    "1CT",0
+.n5     dc.b    "1AD",0   
+.n6     dc.b    "1SR",0
+.n7     dc.b    "2FL",0
+.n8     dc.b    "2FH",0
+.n9     dc.b    "2PL",0
+.n10    dc.b    "2PH",0
+.n11    dc.b    "2CT",0
+.n12    dc.b    "2AD",0   
+.n13    dc.b    "2SR",0
+.n14    dc.b    "3FL",0
+.n15    dc.b    "3FH",0
+.n16    dc.b    "3PL",0
+.n17    dc.b    "3PH",0
+.n18    dc.b    "3CT",0
+.n19    dc.b    "3AD",0   
+.n20    dc.b    "3SR",0
+.n21    dc.b    "FCL",0
+.n22    dc.b    "FCH",0
+.n23    dc.b    "FRR",0
+.n24    dc.b    "FMV",0
+
+tick            dc.l    0
+writeTick       dc.l    0
+outBuffer       ds.b    256
+ endif ; LOG_WRITES
 
 * Write to SID 2
 * in:
@@ -9697,6 +9848,36 @@ grabResidEnvelopes:
     move.w  resid_envelope3+envelope_counterHi(a0),d0
     lsr     #2,d0
     move.w  d0,psb_Envelope6(a1)
+
+ if LOG_ADSR_ENV
+    movem.l d0-d7,-(sp)
+    move.l  _PlaySidBase,a1
+    moveq   #0,d0
+    moveq   #0,d1
+    moveq   #0,d2
+    moveq   #0,d3
+    moveq   #0,d4
+    moveq   #0,d5
+    moveq   #0,d6
+    moveq   #0,d7
+    move.w  psb_Envelope2(a1),d2
+    move.w  psb_Envelope3(a1),d5
+
+	move.l	psb_C64Mem(a1),a1
+	add.l	#$D400,a1
+    move.b  4+7(a1),d0      * v2 cl
+    move.b  5+7(a1),d1      * v2 ad
+    rol     #8,d1
+    move.b  6+7(a1),d1      * v2 sr
+
+    move.b  4+7+7(a1),d3      * v3 cl
+    move.b  5+7+7(a1),d4      * v3 ad
+    rol     #8,d4
+    move.b  6+7+7(a1),d4      * v3 sr
+
+    DPRINT  "cl2=%02.2lx adsr2=%04.4lx e2=%02.2lx cl3=%02.2lx adsr3=%04.4lx e3=%02.2lx"
+    movem.l (sp)+,d0-d7
+ endif 
     rts
 
 
