@@ -9704,8 +9704,25 @@ switchAndFillBuffer:
     * Poke ch4 if not used for digisamples
     move    d0,$d4+$dff000   * words
 .2
-    bsr     grabResidEnvelopes
-    rts
+    ; ---------------------------------
+    ; Store OSC3 and ENV3 values into the IO range memory
+    ; Paul Clansey's Alien reads ENV3 and puts it into filter
+    ; cut off.
+    move.l	_PlaySidBase,a6 
+    move.l	psb_C64Mem(a6),a4	
+
+    move.l  psb_reSID(a6),a0
+    bsr     sid_readOSC3
+    move.l  #$D41B,d1
+    move.b  d0,(a4,d1.l)        * store OSC3
+
+    move.l  psb_reSID(a6),a0
+    bsr     sid_readENV3
+    move.l  #$D41C,d1
+    move.b  d0,(a4,d1.l)        * store ENV3
+
+    bra     grabResidEnvelopes
+
 
 .sid2
     tst.w   psb_Sid3Address(a6)
