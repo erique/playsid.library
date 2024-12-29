@@ -9664,7 +9664,7 @@ switchAndFillBuffer:
     lea     sidBufferAHi(pc),a0
 
     tst.w   psb_Sid2Address(a6)
-    bne.b   .sid2
+    bne     .sid2
 
     basereg sidBufferAHi,a0
     * Swap SID buffers A and B
