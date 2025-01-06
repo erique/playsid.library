@@ -9704,24 +9704,7 @@ switchAndFillBuffer:
     * Poke ch4 if not used for digisamples
     move    d0,$d4+$dff000   * words
 .2
-    ; ---------------------------------
-    ; Store OSC3 and ENV3 values into the IO range memory
-    ; Paul Clansey's Alien reads ENV3 and puts it into filter
-    ; cut off.
-    move.l	_PlaySidBase,a6 
-    move.l	psb_C64Mem(a6),a4	
-
-    move.l  psb_reSID(a6),a0
-    bsr     sid_readOSC3
-    move.l  #$D41B,d1
-    move.b  d0,(a4,d1.l)        * store OSC3
-
-    move.l  psb_reSID(a6),a0
-    bsr     sid_readENV3
-    move.l  #$D41C,d1
-    move.b  d0,(a4,d1.l)        * store ENV3
-
-    bra     grabResidEnvelopes
+    bra     sid1PostClockUpdate
 
 
 .sid2
@@ -9772,8 +9755,7 @@ switchAndFillBuffer:
     move    d0,$b4+$dff000   * words
     move    d0,$c4+$dff000   * words
 
-    bsr     grabResidEnvelopes
-    rts
+    bra     sid1PostClockUpdate
 
 * Three SIDs
 * SID 1: paula 0 + 1, 14-bit
@@ -9840,9 +9822,31 @@ switchAndFillBuffer:
     move    d0,$d4+$dff000   * words
     move    d0,$b4+$dff000   * words
     move    d0,$c4+$dff000   * words
-    rts
 
-grabResidEnvelopes:
+;    bra     sid1PostClockUpdate
+
+* Do stuff after SID 1 has been clocked
+sid1PostClockUpdate:
+    push    a6
+    ; Store OSC3 and ENV3 values into the IO range memory
+    ; Paul Clansey's Alien reads ENV3 and puts it into filter
+    ; cut off.
+    move.l	_PlaySidBase,a6 
+    move.l	psb_C64Mem(a6),a4	
+
+    move.l  psb_reSID(a6),a0
+    bsr     sid_readOSC3
+    move.l  #$D41B,d1
+    move.b  d0,(a4,d1.l)        * store OSC3
+
+    move.l  psb_reSID(a6),a0
+    bsr     sid_readENV3
+    move.l  #$D41C,d1
+    move.b  d0,(a4,d1.l)        * store ENV3
+
+    ; Store envelope counters so they can be read from outside
+    ; for scope display purposes.
+
     move.l  _PlaySidBase,a1
     move.l  psb_reSID(a1),a0
     move.w  resid_envelope1+envelope_counterHi(a0),d0
@@ -9895,6 +9899,7 @@ grabResidEnvelopes:
     DPRINT  "cl2=%02.2lx adsr2=%04.4lx e2=%02.2lx cl3=%02.2lx adsr3=%04.4lx e3=%02.2lx"
     movem.l (sp)+,d0-d7
  endif 
+    pop     a6
     rts
 
 
@@ -10450,7 +10455,7 @@ ahiSwitchAndFillLeftBuffer:
     jsr     (a3)
     move.l  _PlaySidBase,a6
     move.l  d0,psb_AhiSamplesOutLeft(a6)
-    rts
+    bra     sid1PostClockUpdate
 
 ahiSwitchAndFillRightBuffer:
     tst.w   psb_Sid2Address(a6)
