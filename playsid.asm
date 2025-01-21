@@ -963,10 +963,7 @@ getSid2Address:
         add.l   #$d000,d0
         move.w  d0,psb_Sid2Address(a6)
         DPRINT  "2nd SID at %lx"
-        bsr     isResidActive
-        beq     .3
-        bsr     MakeMMUTable2
-.3      rts
+        bra     MakeMMUTable2
 
 
 
@@ -1001,10 +998,7 @@ getSid3Address:
         add.l   #$d000,d0
         move.w  d0,psb_Sid3Address(a6)
         DPRINT  "3rd SID at %lx"
-        bsr     isResidActive
-        beq     .3
-        bsr     MakeMMUTable3
-.3      rts
+        bra     MakeMMUTable3
 
 * Detect SID version to use
 * In:  
