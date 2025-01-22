@@ -361,6 +361,12 @@ AutoInitFunction
         tst.l   d0
         bne     .Exit
 .noZorroSid 
+        cmp.w   #OM_USBSID_PICO,psb_OperatingMode(a6)
+        bne.b   .noUSBSIDPico
+    	moveq.l	#SID_NOUSBSIDPICO,d0
+        tst.l   d0
+        bne     .Exit
+.noUSBSIDPico
 
         bsr	    AllocEmulMem
 		tst.l	d0
@@ -5269,6 +5275,8 @@ writeSIDRegister:
     beq     write_sid_reg
     cmp.w   #OM_ZORROSID,psb_OperatingMode(a2)
     beq     write_zorrosid_reg
+    cmp.w   #OM_USBSID_PICO,psb_OperatingMode(a2)
+;   beq    TODO
 
     * OM_RESID_6581, OM_RESID_8580
 
@@ -5876,6 +5884,8 @@ PlayDisable					;Turns off all Audio
         beq     mute_sid
         cmp.w   #OM_ZORROSID,psb_OperatingMode(a6)
         beq     mute_zorrosid
+        cmp.w   #OM_USBSID_PICO,psb_OperatingMode(a6)
+;        beq     TODO
         rts
 
 *-----------------------------------------------------------------------*
@@ -6344,10 +6354,12 @@ EndOfLibrary
 @FreeEmulAudio	jmp	@FreeEmulAudio_impl.l
 
 @AllocEmulAudio	
-        * No audio alloc with SIDBlaster, ZorroSID
+        * No audio alloc with SIDBlaster, ZorroSID, USBSID-Pico
         cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
         beq     .3
         cmp.w   #OM_ZORROSID,psb_OperatingMode(a6)
+        beq     .3
+        cmp.w   #OM_USBSID_PICO,psb_OperatingMode(a6)
         beq     .3
 
         * Allocate audio in classic mode  
