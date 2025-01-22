@@ -4702,232 +4702,257 @@ WriteIO					;Write 64 I/O $D000-$DFFF
     ; ---------------------------------
 
 .D420:
-	move.w	#$D400,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D420,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D421:
-	move.w	#$D401,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D421,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D422:
-	move.w	#$D402,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D422,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D423:
-	move.w	#$D403,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D423,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D424:
-	move.w	#$D404,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D424,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D425:
-	move.w	#$D405,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D425,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D426:
-	move.w	#$D406,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D426,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D427:
-	move.w	#$D407,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D427,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D428:
-	move.w	#$D408,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D428,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D429:
-	move.w	#$D409,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D429,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D42A:
-	move.w	#$D40A,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D42A,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D42B:
-	move.w	#$D40B,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D42B,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D42C:
-	move.w	#$D40C,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D42C,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D42D:
-	move.w	#$D40D,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D42D,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D42E:
-	move.w	#$D40E,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D42E,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D42F:
-	move.w	#$D40F,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D42F,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D430:
-	move.w	#$D410,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D430,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D431:
-	move.w	#$D411,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D431,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D432:
-	move.w	#$D412,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D432,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D433:
-	move.w	#$D413,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D433,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D434:
-	move.w	#$D414,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D434,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D435:
-	move.w	#$D15,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D435,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D436:
-	move.w	#$D416,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D436,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D437:
-	move.w	#$D417,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D437,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D438:
-	move.w	#$D418,d7
-	move.b	d6,$20(a0,d7.l)
-    bsr     writeSID2Register
+	move.w	#$D438,d7
+	move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 
     ; ---------------------------------
 
 .D440:
-	move.w	#$D400,d7
-    bsr     writeSID3Register
+	move.w	#$D440,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D441:
-	move.w	#$D401,d7
-    bsr     writeSID3Register
+	move.w	#$D441,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D442:
-	move.w	#$D402,d7
-    bsr     writeSID3Register
+	move.w	#$D442,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D443:
-	move.w	#$D403,d7
-    bsr     writeSID3Register
+	move.w	#$D443,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D444:
-	move.w	#$D404,d7
-    bsr     writeSID3Register
+	move.w	#$D444,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D445:
-	move.w	#$D405,d7
-    bsr     writeSID3Register
+	move.w	#$D445,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D446:
-	move.w	#$D406,d7
-    bsr     writeSID3Register
+	move.w	#$D446,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D447:
-	move.w	#$D407,d7
-    bsr     writeSID3Register
+	move.w	#$D447,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D448:
-	move.w	#$D408,d7
-    bsr     writeSID3Register
+	move.w	#$D448,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D449:
-	move.w	#$D409,d7
-    bsr     writeSID3Register
+	move.w	#$D449,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D44A:
-	move.w	#$D40A,d7
-    bsr     writeSID3Register
+	move.w	#$D44A,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D44B:
-	move.w	#$D40B,d7
-    bsr     writeSID3Register
+	move.w	#$D44B,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D44C:
-	move.w	#$D40C,d7
-    bsr     writeSID3Register
+	move.w	#$D44C,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D44D:
-	move.w	#$D40D,d7
-    bsr     writeSID3Register
+	move.w	#$D44D,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D44E:
-	move.w	#$D40E,d7
-    bsr     writeSID3Register
+	move.w	#$D44E,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D44F:
-	move.w	#$D40F,d7
-    bsr     writeSID3Register
+	move.w	#$D44F,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D450:
-	move.w	#$D410,d7
-    bsr     writeSID3Register
+	move.w	#$D450,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D451:
-	move.w	#$D411,d7
-    bsr     writeSID3Register
+	move.w	#$D451,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D452:
-	move.w	#$D412,d7
-    bsr     writeSID3Register
+	move.w	#$D452,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D453:
-	move.w	#$D413,d7
-    bsr     writeSID3Register
+	move.w	#$D453,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D454:
-	move.w	#$D414,d7
-    bsr     writeSID3Register
+	move.w	#$D454,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D455:
-	move.w	#$D15,d7
-    bsr     writeSID3Register
+	move.w	#$D455,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D456:
-	move.w	#$D416,d7
-    bsr     writeSID3Register
+	move.w	#$D456,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D457:
-	move.w	#$D417,d7
-    bsr     writeSID3Register
+	move.w	#$D457,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 .D458:
-	move.w	#$D418,d7
-    bsr     writeSID3Register
+	move.w	#$D458,d7
+    move.b	d6,(a0,d7.l)
+    bsr     writeSIDRegister
     Next_Inst
 
     ; ---------------------------------
@@ -5227,7 +5252,9 @@ WriteIO					;Write 64 I/O $D000-$DFFF
 * Write to SID
 * in:
 *    d6 = data
-*    d7 = address
+*    d7 = address, SID1: $00-$1F
+*                  SID2: $20-$3F
+*                  SID3: $40-$5F
 * out:
 *    Z set: normal playsid operation
 *    Z clear: was written to reSID/SIDBlaster
@@ -5330,9 +5357,20 @@ writeSIDRegister:
 .x
  endif ; LOG_WRITES
 
-
+    * Select target SID
+    * d0 = data
+    * d1 = register offset
     move.l  psb_reSID(a2),a0
-    jsr     sid_write
+    cmp.b   #$20,d1
+    blo.b   .wr
+    move.l  psb_reSID2(a2),a0
+    sub.b   #$20,d1
+    cmp.b   #$20,d1
+    blo.b   .wr
+    move.l  psb_reSID3(a2),a0
+    sub.b   #$20,d1
+.wr
+    jsr     sid_write   
     moveq   #1,d0
     movem.l (sp)+,d0-a6
     rts
@@ -5408,67 +5446,14 @@ writeTick       dc.l    0
 outBuffer       ds.b    256
  endif ; LOG_WRITES
 
-* Write to SID 2
-* in:
-*    d6 = data
-*    d7 = Register offset 
-* out:
-*    Z set: normal playsid operation
-*    Z clear: was written to reSID
-writeSID2Register:
-	move.l	_PlaySidBase,a2
-    tst.w   psb_OperatingMode(a2)
-    bne.b   .out
-    * Normal playsid mode
-.x
-    rts
-.out
-    cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a2)
-    bhs.b   .x
-
-    * OM_RESID_6581, OM_RESID_8580
-
-    movem.l d0-a6,-(sp)
-    move.b  d6,d0
-    move.b  d7,d1
-    move.l  psb_reSID2(a2),a0
-    jsr     sid_write
-    moveq   #1,d0
-    movem.l (sp)+,d0-a6
-    rts
-
-* Write to SID 3
-* in:
-*    d6 = data
-*    d7 = Register offset 
-* out:
-*    Z set: normal playsid operation
-*    Z clear: was written to reSID
-writeSID3Register:
-	move.l	_PlaySidBase,a2
-    tst.w   psb_OperatingMode(a2)
-    bne.b   .out
-    * Normal playsid mode
-.x
-    rts
-.out
-    cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a2)
-    bhs.b   .x
-
-    * OM_RESID_6581, OM_RESID_8580
-
-    movem.l d0-a6,-(sp)
-    move.b  d6,d0
-    move.b  d7,d1
-    move.l  psb_reSID3(a2),a0
-    jsr     sid_write
-    moveq   #1,d0
-    movem.l (sp)+,d0-a6
-    rts
-
 *-----------------------------------------------------------------------*
 
+* in:
+*    d6 = data
+*    d7 = address
 write_sid_reg:
+    cmp.b   #$20,d7     * SIDBlaster: accept SID1 writes only
+    bhs.b   .x
 	movem.l	d0-a6,-(sp)
     moveq   #0,d0
     moveq   #0,d1
@@ -5476,7 +5461,7 @@ write_sid_reg:
 	move.b	d6,d1
 	jsr	_sid_write_reg_record
 	movem.l	(sp)+,d0-a6
-	rts
+.x	rts
 
 start_sid_blaster:
     DPRINT  "start_sid_blaster"
@@ -5588,6 +5573,8 @@ init_zorrosid:
 *    d6 = data
 *    d7 = address
 write_zorrosid_reg:
+    cmp.b   #$20,d7     * ZorroSID: accept SID1 writes only
+    bhs.b   .x
     movem.l	d0/a0,-(sp)
     moveq   #$1f,d0
     and     d7,d0
@@ -5596,7 +5583,7 @@ write_zorrosid_reg:
     move.l  psb_ZorroSIDBase(a0),a0
     move.b  d6,1(a0,d0.w)
     movem.l	(sp)+,d0/a0
-    rts
+.x  rts
 
 mute_zorrosid:
     movem.l	d6/d7,-(sp)
