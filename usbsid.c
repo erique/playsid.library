@@ -10,7 +10,12 @@
 #include <inline/poseidon.h>
 #include <libraries/poseidon.h>
 
-#include "sidblast.h"
+#include "usbsid.h"
+
+#define SID_WRITE           (0 << 6)                /*        0b0 ~ 0x00 */
+#define SID_READ            (1 << 6)                /*        0b1 ~ 0x40 */
+#define EP_SIZE             (0x40)                  /* endpoint size     */
+#define MAX_PACKET_SIZE     (EP_SIZE - 1)           /* max command size  */
 
 #if 1 // NDEBUG
 #define kprintf(...) do {} while(0)
@@ -26,7 +31,7 @@ struct Buffer
     uint8_t     data[8192];
 };
 
-struct SIDBlasterUSB
+struct USBSID_Pico
 {
     struct PsdDevice*   device;
 
@@ -53,79 +58,37 @@ struct SIDBlasterUSB
     int8_t              taskpri;
 };
 
-static uint32_t num_blasters = 0;
-static struct SIDBlasterUSB* blasters[8];
+static struct USBSID_Pico* usb = NULL;
 
 static void SIDTask();
-static bool writePacket(struct SIDBlasterUSB* usb, uint8_t* packet, uint16_t length);
-static uint8_t readResult(struct SIDBlasterUSB* usb);
+static bool writePacket(uint8_t command, uint8_t* packet, uint16_t length);
+static uint8_t readResult();
 static uint32_t deviceUnplugged(register struct Hook *hook __asm("a0"), register APTR object __asm("a2"), register APTR message __asm("a1"));
 typedef ULONG (*HOOKFUNC_ULONG)();  // NDK typedef HOOKFUNC with 'unsigned long'
 static const struct Hook hook = { .h_Entry = (HOOKFUNC_ULONG)deviceUnplugged };
 
-
-static struct SIDBlasterUSB* claim_sidblaster(uint8_t latency, uint8_t taskpri);
-static void release_sidblaster(struct SIDBlasterUSB* usb);
-
-uint8_t sidblaster_init(register uint8_t latency __asm("d0"), register int8_t taskpri __asm("d1"))
+uint8_t usbsid_init(register uint8_t latency __asm("d0"), register int8_t taskpri __asm("d1"))
 {
-    kprintf("sidblaster_init\n");
-    if (num_blasters) {
+    kprintf("usbsid_init\n");
+    if (usb) {
         kprintf("usb != NULL\n");
-        return num_blasters != 0;
+        return usb != NULL;
     }
 
-    memset(blasters, 0x00, sizeof(blasters));
-
-    while(num_blasters < 8)
-    {
-        blasters[num_blasters] = claim_sidblaster(latency, taskpri);
-        if (!blasters[num_blasters])
-        {
-            kprintf("no more blasters\n");
-            break;
-        }
-        num_blasters++;
-    }
-
-    kprintf("return %ld blasters\n", (int)(num_blasters)); 
-    return num_blasters != 0;
-}
-
-void sidblaster_exit()
-{
-    kprintf("sidblaster_exit\n");
-    if (!num_blasters) {
-       kprintf("!usb\n");
-       return;
-    }
-
-    while(num_blasters != 0)
-    {
-        num_blasters--;
-        release_sidblaster(blasters[num_blasters]);
-    }    
-
-    memset(blasters, 0x00, sizeof(blasters));
-}
-
-static struct SIDBlasterUSB* claim_sidblaster(uint8_t latency, uint8_t taskpri)
-{
-    kprintf("claim_sidblaster\n");
     struct Library* PsdBase;
     if(!(PsdBase = OpenLibrary("poseidon.library", 1)))
     {   
         kprintf("poseidon open fail\n");
-        return NULL;
+        return FALSE;
     }
 
-    struct SIDBlasterUSB* usb = psdAllocVec(sizeof(struct SIDBlasterUSB));
+    usb = psdAllocVec(sizeof(struct USBSID_Pico));
 
     if (!usb)
     {
         kprintf("psdAllocVec fail\n");
         CloseLibrary(PsdBase);
-        return NULL;
+        return FALSE;
     }
 
     usb->psdLibrary = PsdBase;
@@ -145,21 +108,22 @@ static struct SIDBlasterUSB* claim_sidblaster(uint8_t latency, uint8_t taskpri)
 
     if (usb->mainTask)
     {
-        psdAddErrorMsg(RETURN_OK, "SIDBlasterUSB", "Time to rock some 8-bit!");
+        psdAddErrorMsg(RETURN_OK, "USBSID-Pico", "Time to rock some 8-bit!");
     }
     else
     {
         kprintf("failed to acquire hw\n"); 
-        psdAddErrorMsg(RETURN_ERROR, "SIDBlasterUSB", "Failed to acquire ancient hardware!");
-        release_sidblaster(usb);
-        return NULL;
+        psdAddErrorMsg(RETURN_ERROR, "USBSID-Pico", "Failed to acquire ancient hardware!");
+        usbsid_exit();
     }
-    return usb;
+
+    kprintf("return %ld\n", (int)(usb != NULL)); 
+    return usb != NULL;
 }
 
-static void release_sidblaster(struct SIDBlasterUSB* usb)
+void usbsid_exit()
 {
-    kprintf("release_sidblaster\n");
+    kprintf("usbsid_exit\n");
     if (!usb) {
        kprintf("!usb\n");
        return;
@@ -169,12 +133,12 @@ static void release_sidblaster(struct SIDBlasterUSB* usb)
     {
         kprintf("reset SID\n");
         // reset SID output
-        sidblaster_write_reg(0x00, 0x00);  // freq voice 1
-        sidblaster_write_reg(0x01, 0x00);
-        sidblaster_write_reg(0x07, 0x00);  // freq voice 2
-        sidblaster_write_reg(0x08, 0x00);
-        sidblaster_write_reg(0x0e, 0x00);  // freq voice 3
-        sidblaster_write_reg(0x0f, 0x00);
+        usbsid_write_reg(0x00, 0x00);  // freq voice 1
+        usbsid_write_reg(0x01, 0x00);
+        usbsid_write_reg(0x07, 0x00);  // freq voice 2
+        usbsid_write_reg(0x08, 0x00);
+        usbsid_write_reg(0x0e, 0x00);  // freq voice 3
+        usbsid_write_reg(0x0f, 0x00);
     }
 
     struct Library* PsdBase = usb->psdLibrary;
@@ -206,52 +170,46 @@ static void release_sidblaster(struct SIDBlasterUSB* usb)
     }
 }
 
-static inline uint8_t sid_address(uint8_t reg)
+uint8_t usbsid_read_reg(register uint8_t reg __asm("d0"))
 {
-    return (reg >> 5) & 0x7;
-}
-
-uint8_t sidblaster_read_reg(register uint8_t reg __asm("d0"))
-{
-    struct SIDBlasterUSB* usb = blasters[sid_address(reg)];
-    reg &= 0x1f;
-
     if (!(usb && !usb->deviceLost))
         return 0x00;
 
+    // flush all recorded writes
+    if (usb->pendingRecorded)
+        usbsid_write_reg_playback();
+
     usb->ctrlTask = FindTask(NULL);
 
-    uint8_t buf[] = { 0xa0 + reg };
-    bool success = writePacket(usb, buf, sizeof(buf));
-    Signal(usb->mainTask, SIGBREAKF_CTRL_D);
+    uint8_t buf[] = { reg, 0x00 };
+    bool success = writePacket(SID_READ, buf, sizeof(buf));
 
     if (!success)
         return 0xff;
 
+    Signal(usb->mainTask, SIGBREAKF_CTRL_D);
     Wait(SIGBREAKF_CTRL_D);
     usb->ctrlTask = NULL;
 
-    return readResult(usb);
+    return readResult();
 }
 
-void sidblaster_write_reg(register uint8_t reg __asm("d0"), register uint8_t value __asm("d1"))
+void usbsid_write_reg(register uint8_t reg __asm("d0"), register uint8_t value __asm("d1"))
 {
-    struct SIDBlasterUSB* usb = blasters[sid_address(reg)];
-    reg &= 0x1f;
-
     if (!(usb && !usb->deviceLost))
         return;
 
-    uint8_t buf[] = { 0xe0 + reg, value };
-    writePacket(usb, buf, sizeof(buf));
+    // flush all recorded writes
+    if (usb->pendingRecorded)
+        usbsid_write_reg_playback();
+
+    uint8_t buf[] = { reg, value };
+    writePacket(SID_WRITE, buf, sizeof(buf));
     Signal(usb->mainTask, SIGBREAKF_CTRL_D);
 }
 
-void sidblaster_write_reg_record(register uint8_t reg __asm("d0"), register uint8_t value __asm("d1"))
+void usbsid_write_reg_record(register uint8_t reg __asm("d0"), register uint8_t value __asm("d1"))
 {
-    struct SIDBlasterUSB* usb = blasters[sid_address(reg)];
-    reg &= 0x1f;
-
     if (!usb)
         return;
 
@@ -259,44 +217,40 @@ void sidblaster_write_reg_record(register uint8_t reg __asm("d0"), register uint
         return;
 
     uint8_t* p = &usb->dataRecorded[usb->pendingRecorded];
-    *p++ = 0xe0 + reg;
+
+    *p++ = reg;
     *p++ = value;
 
     usb->pendingRecorded += 2;
 }
 
-void sidblaster_write_reg_playback()
-{   
-    for (int i = 0; i < num_blasters; ++i)
-    {
-        struct SIDBlasterUSB* usb = blasters[i];
-        if (!(usb && !usb->deviceLost))
-            continue;
+void usbsid_write_reg_playback()
+{
+    if (!(usb && !usb->deviceLost))
+        return;
 
-        if (!usb->pendingRecorded)
-            continue;
+    if (!usb->pendingRecorded)
+        return;
 
-        writePacket(usb, usb->dataRecorded, usb->pendingRecorded);
-        Signal(usb->mainTask, SIGBREAKF_CTRL_D);
-        usb->pendingRecorded = 0;
-    }
+    writePacket(SID_WRITE, usb->dataRecorded, usb->pendingRecorded);
+    Signal(usb->mainTask, SIGBREAKF_CTRL_D);
+    usb->pendingRecorded = 0;
 }
-
 
 /*-------------------------------------------------------*/
 
 
 #define PsdBase usb->psdLibrary
 
-static uint8_t AllocSID(struct SIDBlasterUSB* usb);
-static void FreeSID(struct SIDBlasterUSB* usb);
+static uint8_t AllocSID(struct USBSID_Pico* usb);
+static void FreeSID(struct USBSID_Pico* usb);
 
 static void SIDTask()
 {
     kprintf("SIDTask\n"); 
 
     struct Task* currentTask = FindTask(NULL);
-    struct SIDBlasterUSB* usb = currentTask->tc_UserData;
+    struct USBSID_Pico* usb = currentTask->tc_UserData;
 
     if (AllocSID(usb))
     {
@@ -332,61 +286,93 @@ static void SIDTask()
                 if (buffer->pending)
                 {
                     uint8_t* p = buffer->data;
-                    kprintf("TX : ", buffer->pending);
-                    for (int16_t i = buffer->pending-1; i >= 0; --i)
-                        kprintf("%02lx, ", *p++);
-                    kprintf("\n");
+                    // kprintf("TX : ", buffer->pending);
+                    // for (int16_t i = buffer->pending-1; i >= 0; --i)
+                    //     kprintf("%02lx, ", *p++);
+                    // kprintf("\n");
 
-                    // odd number of bytes means there is read request (at the end).
-                    const bool regRead = buffer->pending & 0x1;
-
-                    int16_t ret = -1;
-
-                    uint8_t result[3];
-                    if (regRead)
-                        psdSendPipe(usb->inPipe, result, sizeof(result));
-
-                    psdDoPipe(usb->outPipe, buffer->data, buffer->pending);
-
-                    if (regRead)
+                    p = buffer->data;
+                    while(buffer->pending)
                     {
-                        do
-                        {
-                            uint32_t ioerr = psdWaitPipe(usb->inPipe);
-                            uint32_t actual = psdGetPipeActual(usb->inPipe);
+                        const bool regRead = (*p == SID_READ);
 
-                            if(ioerr)
+                        // kprintf("%s(%02lx) : ", regRead ? "R" : "W", *p);
+
+                        int16_t ret = -1;
+
+                        uint8_t result[1];
+                        if (regRead)
+                            psdSendPipe(usb->inPipe, result, sizeof(result));
+
+                        uint16_t length = buffer->pending;
+                        if (length > MAX_PACKET_SIZE)
+                            length = MAX_PACKET_SIZE;
+
+                        if (*p == SID_WRITE)
+                            *p = (*p & 0xc0) | ((length-1) & 0x3f);
+
+                        kprintf("TX (%ld bytes) : ", length);
+                        for (int16_t i = 0; i < length; i++)
+                            kprintf("%02lx, ", p[i]);
+
+                        // const uint16_t length = 3;
+                        // kprintf("  | [%02lx] = %02lx\n", p[1], p[2]);
+
+                        psdDoPipe(usb->outPipe, p, length);
+                        p += length;
+                        buffer->pending -= length;
+
+                        if(buffer->pending)
+                        {
+                            kprintf(" + ");
+                            p = &p[-1];         // move pointer back one byte ...
+                            *p = SID_WRITE;     // so that we can insert the command again
+                            buffer->pending++;  // ... and adjust the size
+                        }
+                        kprintf("\n");
+
+                        if (regRead)
+                        {
+                            do
                             {
-                                kprintf("psdSendPipe(IN) failed! ioerr = %08lx ; actual = %ld\n", ioerr, actual);
-                            }
-                            else
-                            {
-                                if (actual > 2)
+                                uint32_t ioerr = psdWaitPipe(usb->inPipe);
+                                uint32_t actual = psdGetPipeActual(usb->inPipe);
+
+                                if(ioerr)
                                 {
-                                    ret = result[2];
-                                    kprintf("RX : %02lx\n", ret);
+                                    kprintf("psdSendPipe(IN) failed! ioerr = %08lx ; actual = %ld\n", ioerr, actual);
                                     break;
                                 }
+                                else
+                                {
+                                    if (actual > 0)
+                                    {
+                                        ret = result[0];
+                                        kprintf("RX : %02lx\n", ret);
+                                        break;
+                                    }
+                                    kprintf("zero bytes; timed out?\n");
+                                }
+                                // try again
+                                psdSendPipe(usb->inPipe, result, sizeof(result));
                             }
-                            // try again
-                            psdSendPipe(usb->inPipe, result, sizeof(result));
-                        }
-                        while(ret < 0);
+                            while(ret < 0);
 
-                        uint8_t res = (uint8_t)(ret & 0xff);
+                            uint8_t res = (uint8_t)(ret & 0xff);
 
-                        Disable();
-                        struct Buffer* buffer = &usb->inBuffers[usb->inBufferNum];
-                        if (sizeof(buffer->data) - 1 > buffer->pending)
-                        {
-                            buffer->data[buffer->pending] = res;
-                            buffer->pending += 1;
-                            if (usb->ctrlTask)
+                            Disable();
+                            struct Buffer* buffer = &usb->inBuffers[usb->inBufferNum];
+                            if (sizeof(buffer->data) - 1 > buffer->pending)
                             {
-                                Signal(usb->ctrlTask, SIGBREAKF_CTRL_D);
+                                buffer->data[buffer->pending] = res;
+                                buffer->pending += 1;
+                                if (usb->ctrlTask)
+                                {
+                                    Signal(usb->ctrlTask, SIGBREAKF_CTRL_D);
+                                }
                             }
+                            Enable();
                         }
-                        Enable();
                     }
                 }
             }
@@ -408,11 +394,11 @@ static void SIDTask()
     }
 }
 
-static uint8_t AllocSID(struct SIDBlasterUSB* usb)
+static uint8_t AllocSID(struct USBSID_Pico* usb)
 {
     kprintf("AllocSID\n"); 
 
-    // Find SIDBlasterUSB
+    // Find USBSID-Pico
     {
         kprintf("psdLocReadPBase\n"); 
         psdLockReadPBase();
@@ -421,9 +407,9 @@ static uint8_t AllocSID(struct SIDBlasterUSB* usb)
 
         APTR pd = NULL;
         while(pd = psdFindDevice(pd, 
-                                DA_VendorID, 0x0403,
-                                DA_ProductID, 0x6001,
-                                DA_Manufacturer, (ULONG)"Devsound",
+                                DA_VendorID, 0xcafe,
+                                DA_ProductID, 0x4011,
+                                DA_ProductName, (ULONG)"USBSID-Pico",
                                 DA_Binding, (ULONG)NULL,
                                 TAG_END))
         {
@@ -439,6 +425,20 @@ static uint8_t AllocSID(struct SIDBlasterUSB* usb)
                 kprintf("product=%s\n", product);
             } else {
                 kprintf("product=NULL\n"); 
+            }
+
+            struct PsdInterface* interface = NULL;
+            while(interface = psdFindInterface(pd, interface, TAG_END))
+            {
+                psdGetAttrs(PGA_INTERFACE, interface,
+                            IFA_Binding, (ULONG)&pab,
+                            TAG_END);
+
+                if (pab)
+                {
+                    kprintf("found interface binding. releasing..\n");
+                    psdReleaseIfBinding(interface);
+                }
             }
                 
             pab = psdClaimAppBinding(ABA_Device, (ULONG)pd,
@@ -466,99 +466,98 @@ static uint8_t AllocSID(struct SIDBlasterUSB* usb)
     if (!(usb->msgPort = CreateMsgPort()))
         return FALSE;
 
-    // Init SIDBlasterUSB (based on wireshark'd USB sniffing)
     {
-        enum FTDI_Request
-        {
-            FTDI_Reset          = 0x00,
-            FTDI_ModemCtrl      = 0x01,
-            FTDI_SetFlowCtrl    = 0x02,
-            FTDI_SetBaudRate    = 0x03,
-            FTDI_SetData        = 0x04,
-            FTDI_GetModemStat   = 0x05,
-            FTDI_SetLatTimer    = 0x09,
-            FTDI_GetLatTimer    = 0x0A,
-            FTDI_ReadEEPROM     = 0x90,
-        };
-
-        enum FTDI_ResetType
-        {
-            FTDI_Reset_PurgeRXTX = 0,
-            FTDI_Reset_PurgeRX,
-            FTDI_Reset_PurgeTX
-        };
-
-        uint8_t recvBuffer[64];
+        kprintf("CDCCTRL_CLASSCODE / CDC_ACM_SUBCLASS\n");      
         struct PsdPipe* ep0pipe = psdAllocPipe(usb->device, usb->msgPort, NULL);
         if (!ep0pipe)
+        {
+            kprintf("!ep0pipe, return FALSE\n");
             return FALSE;
-
-        psdPipeSetup(ep0pipe, URTF_IN|URTF_VENDOR, FTDI_GetLatTimer, 0x00, 0x00);
-        psdDoPipe(ep0pipe, recvBuffer, 1);
-
-        psdPipeSetup(ep0pipe, URTF_VENDOR, FTDI_SetLatTimer, usb->latency, 0x00);
-        psdDoPipe(ep0pipe, NULL, 0);
-
-        psdPipeSetup(ep0pipe, URTF_IN|URTF_VENDOR, FTDI_GetLatTimer, 0x00, 0x00);
-        psdDoPipe(ep0pipe, recvBuffer, 1);
-
-        psdPipeSetup(ep0pipe, URTF_IN|URTF_VENDOR, FTDI_ReadEEPROM, 0x00, 0x0a);
-        psdDoPipe(ep0pipe, recvBuffer, 2);
-
-        psdPipeSetup(ep0pipe, URTF_VENDOR, FTDI_Reset, FTDI_Reset_PurgeRXTX, 0x00);
-        psdDoPipe(ep0pipe, NULL, 0);
-        for (int i = 0; i < 6; ++i) {
-            psdPipeSetup(ep0pipe, URTF_VENDOR, FTDI_Reset, FTDI_Reset_PurgeRX, 0x00);
-            psdDoPipe(ep0pipe, NULL, 0);
         }
-        psdPipeSetup(ep0pipe, URTF_VENDOR, FTDI_Reset, FTDI_Reset_PurgeTX, 0x00);
-        psdDoPipe(ep0pipe, NULL, 0);
 
-        psdPipeSetup(ep0pipe, URTF_IN|URTF_VENDOR, FTDI_GetModemStat, 0x00, 0x00);
-        psdDoPipe(ep0pipe, recvBuffer, 2);
+#define ACM_CTRL_DTR   0x01
+#define ACM_CTRL_RTS   0x02
 
-        psdPipeSetup(ep0pipe, URTF_IN|URTF_VENDOR, FTDI_GetLatTimer, 0x00, 0x00);
-        psdDoPipe(ep0pipe, recvBuffer, 1);
+        psdPipeSetup(ep0pipe, URTF_CLASS|URTF_INTERFACE, UCDCR_SET_CONTROL_LINE_STATE, ACM_CTRL_DTR | ACM_CTRL_RTS, 0x00);
+        if (psdDoPipe(ep0pipe, NULL, 0))
+        {
+            kprintf("UCDCR_SET_CONTROL_LINE_STATE error\n");
+        }
 
-        psdPipeSetup(ep0pipe, URTF_VENDOR, FTDI_SetBaudRate, 0x06, 0x00);
-        psdDoPipe(ep0pipe, NULL, 0);
+        // unsigned char encoding[] = { 0x40, 0x54, 0x89, 0x00, 0x00, 0x00, 0x08 };
+        struct UsbCDCLineCoding lineCoding = { .dwDTERate = 0x40548900 /*little endian*/, .bCharFormat = 0, .bParityType = 0, .bDataBits = 8 };
 
-        psdPipeSetup(ep0pipe, URTF_VENDOR, FTDI_SetData, 0x08, 0x00);
-        psdDoPipe(ep0pipe, NULL, 0);
+        psdPipeSetup(ep0pipe, URTF_CLASS|URTF_INTERFACE, UCDCR_SET_LINE_CODING, 0, 0x00);
+        if (psdDoPipe(ep0pipe, &lineCoding, sizeof(struct UsbCDCLineCoding)))
+        {
+            kprintf("UCDCR_SET_CONTROL_LINE_STATE error\n");
+        }
 
         psdFreePipe(ep0pipe);
     }
 
     // Allocate in/out pipes
     {
-        struct PsdInterface* interface = psdFindInterface(usb->device, NULL, TAG_END);
+        kprintf("CDCDATA_CLASSCODE\n");      
+        struct PsdInterface* interface = psdFindInterface(usb->device, NULL, 
+                                                IFA_Class, CDCDATA_CLASSCODE,
+                                                TAG_END);
         if (!interface)
+        {
+            kprintf("!interface, return FALSE\n");             
             return FALSE;
+        }
 
         struct PsdEndpoint* epIn = psdFindEndpoint(interface, NULL,
                                                    EA_IsIn, TRUE,
                                                    EA_TransferType, USEAF_BULK,
                                                    TAG_END);
         if (!epIn)
+        {
+            kprintf("!epIn, return FALSE\n");             
             return FALSE;
+        }
 
         struct PsdEndpoint* epOut = psdFindEndpoint(interface, NULL,
                                                    EA_IsIn, FALSE,
                                                    EA_TransferType, USEAF_BULK,
                                                    TAG_END);
         if (!epOut)
+        {
+            kprintf("!epOut, return FALSE\n");             
             return FALSE;
+        }
 
         if (!(usb->inPipe = psdAllocPipe(usb->device, usb->msgPort, epIn)))
+        {
+            kprintf("!inPipe, return FALSE\n");             
             return FALSE;
+        }
         if (!(usb->outPipe = psdAllocPipe(usb->device, usb->msgPort, epOut)))
+        {
+            kprintf("!outPipe, return FALSE\n");             
             return FALSE;
+        }
+
+        psdSetAttrs(PGA_PIPE, usb->outPipe,
+                    PPA_NakTimeout, TRUE,
+                    PPA_NakTimeoutTime, 100,
+                    TAG_END);
+
+        psdSetAttrs(PGA_PIPE, usb->inPipe,
+                    PPA_NakTimeout, TRUE,
+                    PPA_NakTimeoutTime, 100,
+                    TAG_END);
+
+        // uint8_t dummy;
+        // psdDoPipe(usb->inPipe, &dummy, 1);
+
     }
 
     return TRUE;
 }
 
-static void FreeSID(struct SIDBlasterUSB* usb)
+static void FreeSID(struct USBSID_Pico* usb)
 {
     if (usb->inPipe)
     {
@@ -595,19 +594,21 @@ static void FreeSID(struct SIDBlasterUSB* usb)
 
 static uint32_t deviceUnplugged(register struct Hook *hook __asm("a0"), register APTR object __asm("a2"), register APTR message __asm("a1"))
 {
-    struct SIDBlasterUSB* usb = (struct SIDBlasterUSB*)message;
+    struct USBSID_Pico* usb = (struct USBSID_Pico*)message;
 
     usb->deviceLost = TRUE;
 
     if (usb->outPipe)
         psdAbortPipe(usb->outPipe);
+    if (usb->inPipe)
+        psdAbortPipe(usb->inPipe);
 
     Forbid();
     if(usb->mainTask)
     {
         Signal(usb->mainTask, SIGBREAKF_CTRL_C);
 
-        psdAddErrorMsg(RETURN_OK, "SIDBlasterUSB", "End of an era");
+        psdAddErrorMsg(RETURN_OK, "USBSID-Pico", "End of an era");
     }
     Permit();
 
@@ -633,7 +634,7 @@ static uint32_t deviceUnplugged(register struct Hook *hook __asm("a0"), register
     } while(0)
 
 
-static bool writePacket(struct SIDBlasterUSB* usb, uint8_t* packet, uint16_t length)
+static bool writePacket(uint8_t command, uint8_t* packet, uint16_t length)
 {
     while(TRUE)
     {
@@ -656,10 +657,28 @@ static bool writePacket(struct SIDBlasterUSB* usb, uint8_t* packet, uint16_t len
             continue;
         }
 
-        uint8_t* dest = &buffer->data[buffer->pending];
+        uint16_t pending = buffer->pending;
+
+        if (pending && *buffer->data != command)
+        {
+            // the command changed; wait until previous data is flushed
+            ENABLE(SysBase);
+            kprintf("Command mismatch!\n");
+            SysBase->SysFlags |= 0x8000; // trigger reschedule
+            return false;
+        }
+
+        uint8_t* dest = &buffer->data[pending];
+
+        if (pending == 0)
+        {
+            *dest++ = command;
+            pending++;
+        }
+
         for (int16_t i = length-1; i >= 0; --i)
             *dest++ =  *packet++;
-        buffer->pending += length;
+        buffer->pending = pending + length;
 
         ENABLE(SysBase);
         break;
@@ -667,7 +686,7 @@ static bool writePacket(struct SIDBlasterUSB* usb, uint8_t* packet, uint16_t len
     return true;
 }
 
-static uint8_t readResult(struct SIDBlasterUSB* usb)
+static uint8_t readResult()
 {
     while(TRUE)
     {
@@ -708,7 +727,7 @@ static void raw_put_char(uint32_t c __asm("d0"))
 
 static int kvprintf(const char* format, va_list ap)
 {
-//    __asm volatile("move.w #3546895/115200,0xdff032": : : "cc", "memory");
+   __asm volatile("move.w #3546895/115200,0xdff032": : : "cc", "memory");
 
     RawDoFmt((STRPTR)format, ap, (__fpt)raw_put_char, NULL);
     return 0;
