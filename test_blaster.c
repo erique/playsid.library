@@ -5,7 +5,7 @@
 #include <proto/poseidon.h>
 #include <string.h>
 
-#include "sidblast.h"
+#include "sid.h"
 #include "git.gen.h"
 
 uint32_t timeout = 10;  // seconds
@@ -41,7 +41,7 @@ int main(int argc, const char** argv)
         return FALSE;
     }
 
-    if (!sid_init(latency, taskpri))
+    if (sid_init(OM_SIDBLASTER_USB/*OM_USBSID_PICO*/, latency, taskpri))
     {
         printf("sid init failed\n");
         return -1;
