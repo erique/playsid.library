@@ -15,14 +15,14 @@ PLAYSID_LIBDEFS_I SET  1
 	include "git.gen.i"
 
 PSIDLIB_VERSION		equ	1
-PSIDLIB_REVISION	equ	6
+PSIDLIB_REVISION	equ	8
 
 PSIDLIB_NAME	MACRO
 		dc.b	"playsid.library",0
 		ENDM
 
 PSIDLIB_IDSTRING MACRO
-		dc.b	"playsid.library 1.6 (7.10.2023) reSID+SIDBlaster (git:"
+		dc.b	"playsid.library 1.8 (Dec 2024) reSID+SIDBlaster+ZorroSID (git:"
 		GIT
 		dc.b	")",13,10,0
 		ENDM
@@ -184,7 +184,10 @@ FREE		MACRO
     UWORD   psb_ResidMode
     APTR    psb_DOSBase
     APTR    psb_reSID2
+    APTR    psb_reSID3
+    UWORD   psb_HeaderChipVersion
     UWORD   psb_Sid2Address
+    UWORD   psb_Sid3Address
     ULONG   psb_SamplesPerFrame
     UWORD   psb_Debug
 	UWORD	psb_OldC64TimerB
@@ -196,21 +199,32 @@ FREE		MACRO
     ULONG   psb_AhiSamplesOutLeft
     ULONG   psb_AhiBankRight
     ULONG   psb_AhiSamplesOutRight
+    ULONG   psb_AhiBankMiddle
+    ULONG   psb_AhiSamplesOutMiddle
+    APTR    psb_ZorroSIDBase
+    UWORD   psb_Envelope1
+    UWORD   psb_Envelope2
+    UWORD   psb_Envelope3
+    UWORD   psb_Envelope4
+    UWORD   psb_Envelope5
+    UWORD   psb_Envelope6
 	LABEL	psb_SIZEOF
 
 ; --- Error --------------------------------------------------------------
-SID_NOMEMORY	equ	-1
-SID_NOAUDIODEVICE	equ	-2
-SID_NOCIATIMER	equ	-3
-SID_NOPAUSE	equ	-4
-SID_NOMODULE	equ	-5
-SID_NOICON	equ	-6
-SID_BADTOOLTYPE	equ	-7
-SID_NOLIBRARY	equ	-8
-SID_BADHEADER	equ	-9
-SID_NOSONG	equ	-10
-SID_LIBINUSE	equ	-11
+SID_NOMEMORY      equ -1
+SID_NOAUDIODEVICE equ -2
+SID_NOCIATIMER    equ -3
+SID_NOPAUSE       equ -4
+SID_NOMODULE      equ -5
+SID_NOICON        equ -6
+SID_BADTOOLTYPE   equ -7
+SID_NOLIBRARY     equ -8
+SID_BADHEADER     equ -9
+SID_NOSONG        equ -10
+SID_LIBINUSE      equ -11
 SID_NOSIDBLASTER  equ -12
+SID_ZORROSIDINVALID equ -13
+SID_NOUSBSIDPICO  equ -14
 
 ; --- Playing Modes ------------------------------------------------------
 PM_STOP		equ	0
@@ -226,7 +240,10 @@ RM_PLAYBACK	equ	$8000
 OM_NORMAL         equ 0
 OM_RESID_6581     equ 1
 OM_RESID_8580     equ 2
-OM_SIDBLASTER_USB equ 3
+OM_RESID_AUTO     equ 3
+OM_SIDBLASTER_USB equ 4
+OM_ZORROSID       equ 5
+OM_USBSID_PICO    equ 6
 
 ; --- reSID Modes -----------------------------------------------------
 REM_NORMAL         equ 0
@@ -234,7 +251,6 @@ REM_OVERSAMPLE2    equ 1
 REM_OVERSAMPLE3    equ 2
 REM_OVERSAMPLE4    equ 3
 REM_INTERPOLATE    equ 4
-REM_AHI            equ 5
 
 ; ========================================================================;
 ; === DisplayData ========================================================;
@@ -345,9 +361,11 @@ CAI_NONE	equ	$FF	;
 	UWORD	ch4_SamPer
 	UWORD	ch4_SamRepLen
 	UWORD	ch4_SamVol
+	UWORD   ch4_SamVolMultiplier
 	UBYTE	ch4_Repeat
 	UBYTE	ch4_Mode
 	UBYTE	ch4_Active
+    UBYTE   ch4_WasActive
 	UBYTE	ch4_Counter
 	UBYTE	ch4_AverageVol
 	LABEL	ch4_SIZEOF
