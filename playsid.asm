@@ -922,11 +922,34 @@ isResidActive:
 
 		move.w	#1,psb_SongSetFlag(a6)
         move.l  (sp)+,a1
-
         bsr     getSid2Address
         bsr     getSid3Address
         bsr     getSidChipVersion
 
+        cmp.w   #OM_RESID_AUTO,psb_OperatingMode(a6)
+        bne     .3
+        ; Determine chip model - based on header
+        moveq   #CHIP_MODEL_MOS6581,d0
+        cmp     #%01,psb_HeaderChipVersion(a6)
+        beq     .4
+        moveq   #CHIP_MODEL_MOS8580,d0
+        cmp     #%10,psb_HeaderChipVersion(a6)
+        beq     .4
+        * Default fallback
+        moveq   #CHIP_MODEL_MOS6581,d0
+.4      
+        move.l  a5,-(sp)        * sid_set_chip_model clobbers a5
+        move.l  d0,-(sp)
+        move.l  psb_reSID(a6),a0
+        jsr     sid_set_chip_model
+        move.l  (sp),d0
+        move.l  psb_reSID2(a6),a0
+        jsr     sid_set_chip_model
+        move.l  (sp)+,d0
+        move.l  psb_reSID3(a6),a0
+        jsr     sid_set_chip_model
+        move.l  (sp)+,a5
+.3
 		;CALLEXEC Permit
 		rts
 
@@ -1004,6 +1027,7 @@ getSid3Address:
 * In:  
 *   a0 = module
 getSidChipVersion:
+    DPRINT  "getSidChipVersion"
     move.w  #%01,psb_HeaderChipVersion(a6)
     cmp     #2,sidh_version(a0)
     blo     .v1
@@ -9131,16 +9155,7 @@ initResid:
     moveq   #CHIP_MODEL_MOS8580,d0
     cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
     beq.b   .1
-    cmp.w   #OM_RESID_AUTO,psb_OperatingMode(a6)
-    bne     .1
-    ; Determine chip model - based on header
-    moveq   #CHIP_MODEL_MOS6581,d0
-    cmp     #%01,psb_HeaderChipVersion(a6)
-    beq     .1
-    moveq   #CHIP_MODEL_MOS8580,d0
-    cmp     #%10,psb_HeaderChipVersion(a6)
-    beq     .1
-    * Default fallback
+    * Default fallback - auto mode will he handled later
     moveq   #CHIP_MODEL_MOS6581,d0
 .1
     push    d0
