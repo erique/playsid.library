@@ -469,6 +469,8 @@ GetEnvMode:
     beq     .5
     cmp.l   #"zorr",d0
     beq     .6
+    cmp.l   #"usbp",d0
+    beq     .7
     bra     .1 * default
 .x  rts
 
@@ -500,6 +502,11 @@ GetEnvMode:
 .6
     DPRINT  "PlaySIDMode=ZorroSID"
     moveq   #OM_ZORROSID,d0
+    bsr     @SetOperatingMode
+    rts
+.7
+    DPRINT  "PlaySIDMode=USBSID-Pico"
+    moveq   #OM_USBSID_PICO,d0
     bsr     @SetOperatingMode
     rts
 
