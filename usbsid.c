@@ -179,11 +179,12 @@ uint8_t usbsid_read_reg(register uint8_t reg __asm("d0"))
         return 0x00;
 
     // flush all recorded writes
-    usbsid_write_reg_playback();
+    if (usb->pendingRecorded)
+        usbsid_write_reg_playback();
 
     usb->ctrlTask = FindTask(NULL);
 
-    uint8_t buf[] = { SID_READ, sid_address(reg), 0x00 };
+    uint8_t buf[] = { sid_address(reg), 0x00 };
     bool success = writePacket(SID_READ, buf, sizeof(buf));
     Signal(usb->mainTask, SIGBREAKF_CTRL_D);
 
@@ -201,7 +202,11 @@ void usbsid_write_reg(register uint8_t reg __asm("d0"), register uint8_t value _
     if (!(usb && !usb->deviceLost))
         return;
 
-    uint8_t buf[] = { SID_WRITE, sid_address(reg), value };
+    // flush all recorded writes
+    if (usb->pendingRecorded)
+        usbsid_write_reg_playback();
+
+    uint8_t buf[] = { sid_address(reg), value };
     writePacket(SID_WRITE, buf, sizeof(buf));
     Signal(usb->mainTask, SIGBREAKF_CTRL_D);
 }
@@ -211,17 +216,15 @@ void usbsid_write_reg_record(register uint8_t reg __asm("d0"), register uint8_t 
     if (!usb)
         return;
 
-    if (usb->pendingRecorded > sizeof(usb->dataRecorded) - 3)
+    if (usb->pendingRecorded > sizeof(usb->dataRecorded) - 2)
         return;
 
     uint8_t* p = &usb->dataRecorded[usb->pendingRecorded];
 
-    kprintf("%02lx = %02lx\n", reg, value);
-    *p++ = SID_WRITE;
     *p++ = sid_address(reg);
     *p++ = value;
 
-    usb->pendingRecorded += 3;
+    usb->pendingRecorded += 2;
 }
 
 void usbsid_write_reg_playback()
@@ -308,8 +311,6 @@ static void SIDTask()
 
                 if (buffer->pending)
                 {
-                    kprintf("ABOUT TO PUSH %ld bytes\n", buffer->pending);
-
                     uint8_t* p = buffer->data;
                     // kprintf("TX : ", buffer->pending);
                     // for (int16_t i = buffer->pending-1; i >= 0; --i)
@@ -321,7 +322,7 @@ static void SIDTask()
                     {
                         const bool regRead = (*p == SID_READ);
 
-                        kprintf("%s(%02lx) : ", regRead ? "R" : "W", *p);
+                        // kprintf("%s(%02lx) : ", regRead ? "R" : "W", *p);
 
                         int16_t ret = -1;
 
@@ -329,30 +330,32 @@ static void SIDTask()
                         if (regRead)
                             psdSendPipe(usb->inPipe, result, sizeof(result));
 
-                        // uint16_t length = buffer->pending;
-                        // if (length > MAX_PACKET_SIZE)
-                        //     length = MAX_PACKET_SIZE;
+                        uint16_t length = buffer->pending;
+                        if (length > MAX_PACKET_SIZE)
+                            length = MAX_PACKET_SIZE;
 
-                        // kprintf("TX (%ld bytes) : ", length);
-                        // for (int16_t i = 0; i < length; i++)
-                        //     kprintf("%02lx, ", p[i]);
+                        if (*p == SID_WRITE)
+                            *p = (*p & 0xc0) | ((length-1) & 0x3f);
 
+                        kprintf("TX (%ld bytes) : ", length);
+                        for (int16_t i = 0; i < length; i++)
+                            kprintf("%02lx, ", p[i]);
 
-                        const uint16_t length = 3;
-                        kprintf("  | [%02lx] = %02lx\n", p[1], p[2]);
+                        // const uint16_t length = 3;
+                        // kprintf("  | [%02lx] = %02lx\n", p[1], p[2]);
 
                         psdDoPipe(usb->outPipe, p, length);
                         p += length;
                         buffer->pending -= length;
 
-                        // if(buffer->pending)
-                        // {
-                        //     kprintf(" + ");
-                        //     p = &p[-1];
-                        //     *p = buffer->data[0];
-                        //     buffer->pending++;
-                        // }
-                        // kprintf("\n");
+                        if(buffer->pending)
+                        {
+                            kprintf(" + ");
+                            p = &p[-1];         // move pointer back one byte ...
+                            *p = SID_WRITE;     // so that we can insert the command again
+                            buffer->pending++;  // ... and adjust the size
+                        }
+                        kprintf("\n");
 
                         if (regRead)
                         {
@@ -364,6 +367,7 @@ static void SIDTask()
                                 if(ioerr)
                                 {
                                     kprintf("psdSendPipe(IN) failed! ioerr = %08lx ; actual = %ld\n", ioerr, actual);
+                                    break;
                                 }
                                 else
                                 {
@@ -373,6 +377,7 @@ static void SIDTask()
                                         kprintf("RX : %02lx\n", ret);
                                         break;
                                     }
+                                    kprintf("zero bytes; timed out?\n");
                                 }
                                 // try again
                                 psdSendPipe(usb->inPipe, result, sizeof(result));
@@ -559,6 +564,20 @@ static uint8_t AllocSID(struct USBSID_Pico* usb)
             kprintf("!outPipe, return FALSE\n");             
             return FALSE;
         }
+
+        psdSetAttrs(PGA_PIPE, usb->outPipe,
+                    PPA_NakTimeout, TRUE,
+                    PPA_NakTimeoutTime, 100,
+                    TAG_END);
+
+        psdSetAttrs(PGA_PIPE, usb->inPipe,
+                    PPA_NakTimeout, TRUE,
+                    PPA_NakTimeoutTime, 100,
+                    TAG_END);
+
+        uint8_t dummy;
+        psdDoPipe(usb->inPipe, &dummy, 1);
+
     }
 
     return TRUE;
@@ -607,6 +626,8 @@ static uint32_t deviceUnplugged(register struct Hook *hook __asm("a0"), register
 
     if (usb->outPipe)
         psdAbortPipe(usb->outPipe);
+    if (usb->inPipe)
+        psdAbortPipe(usb->inPipe);
 
     Forbid();
     if(usb->mainTask)
@@ -664,22 +685,25 @@ static bool writePacket(uint8_t command, const uint8_t* packet, uint16_t length)
 
         uint16_t pending = buffer->pending;
 
-        // if (pending && *buffer->data != command)
-        // {
-        //     kprintf("command mismatch!\n");
-        //     // the command changed; wait until previous data is flushed
-        //     SysBase->SysFlags |= 0x8000; // trigger reschedule
-        //     ENABLE(SysBase);
-        //     continue;
-        // }
+        if (pending && *buffer->data != command)
+        {
+            // the command changed; wait until previous data is flushed
+            ENABLE(SysBase);
+            kprintf("command mismatch!\n");
+
+            // heavy-handed reschedule - lower task pri, and then set it back
+            struct Task* task = FindTask(NULL);
+            SetTaskPri(task, SetTaskPri(task, usb->taskpri - 1));
+            continue;
+        }
 
         uint8_t* dest = &buffer->data[pending];
 
-        // if (pending == 0)
-        // {
-        //     *dest++ = command;
-        //     pending++;
-        // }
+        if (pending == 0)
+        {
+            *dest++ = command;
+            pending++;
+        }
 
         for (int16_t i = length-1; i >= 0; --i)
             *dest++ =  *packet++;
