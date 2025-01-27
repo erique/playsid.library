@@ -14,6 +14,10 @@
 
 #define SID_WRITE           (0 << 6)                /*        0b0 ~ 0x00 */
 #define SID_READ            (1 << 6)                /*        0b1 ~ 0x40 */
+#define SID_CYCLED_WRITE    (2 << 6)                /*       0b10 ~ 0x80 */
+#define SID_COMMAND         (3 << 6)                /*       0b11 ~ 0xC0 */
+#define SID_RESET_SID       (14)                    /*     0b1110 ~ 0x0E */
+
 #define EP_SIZE             (0x40)                  /* endpoint size     */
 #define MAX_PACKET_SIZE     (EP_SIZE - 1)           /* max command size  */
 
@@ -61,7 +65,7 @@ struct USBSID_Pico
 static struct USBSID_Pico* usb = NULL;
 
 static void SIDTask();
-static bool writePacket(uint8_t command, uint8_t* packet, uint16_t length);
+static bool writePacket(uint8_t command, const uint8_t* packet, uint16_t length);
 static uint8_t readResult();
 static uint32_t deviceUnplugged(register struct Hook *hook __asm("a0"), register APTR object __asm("a2"), register APTR message __asm("a1"));
 typedef ULONG (*HOOKFUNC_ULONG)();  // NDK typedef HOOKFUNC with 'unsigned long'
@@ -132,13 +136,7 @@ void usbsid_exit()
     if(usb->mainTask)
     {
         kprintf("reset SID\n");
-        // reset SID output
-        usbsid_write_reg(0x00, 0x00);  // freq voice 1
-        usbsid_write_reg(0x01, 0x00);
-        usbsid_write_reg(0x07, 0x00);  // freq voice 2
-        usbsid_write_reg(0x08, 0x00);
-        usbsid_write_reg(0x0e, 0x00);  // freq voice 3
-        usbsid_write_reg(0x0f, 0x00);
+        usbsid_reset();
     }
 
     struct Library* PsdBase = usb->psdLibrary;
@@ -235,6 +233,29 @@ void usbsid_write_reg_playback()
     writePacket(SID_WRITE, usb->dataRecorded, usb->pendingRecorded);
     Signal(usb->mainTask, SIGBREAKF_CTRL_D);
     usb->pendingRecorded = 0;
+}
+
+void usbsid_reset()
+{
+    if (!(usb && !usb->deviceLost))
+        return;
+
+    // flush all recorded writes
+    if (usb->pendingRecorded)
+        usbsid_write_reg_playback();
+
+    // uint8_t buf[] = { 1 /* reset_sid_registers */ };
+    // writePacket(SID_COMMAND | SID_RESET_SID, buf, sizeof(buf));
+
+    for (uint16_t sid = 0xd400; sid <= 0xd420; sid += 0x20)
+    {
+        uint8_t offset = (uint8_t)(sid & 0xff);
+
+        for (uint8_t reg = 0x00; reg < 0x1d; reg += 0x01)
+            usbsid_write_reg_record(offset + reg, 0x00);
+
+        usbsid_write_reg_playback();
+    }
 }
 
 /*-------------------------------------------------------*/
@@ -634,7 +655,7 @@ static uint32_t deviceUnplugged(register struct Hook *hook __asm("a0"), register
     } while(0)
 
 
-static bool writePacket(uint8_t command, uint8_t* packet, uint16_t length)
+static bool writePacket(uint8_t command, const uint8_t* packet, uint16_t length)
 {
     while(TRUE)
     {

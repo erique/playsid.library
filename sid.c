@@ -64,3 +64,11 @@ void sid_write_reg_playback()
 	if (backend == OM_USBSID_PICO)
 		return usbsid_write_reg_playback();
 }
+
+void sid_reset()
+{
+	if (backend == OM_SIDBLASTER_USB)
+		return sidblaster_reset();
+	if (backend == OM_USBSID_PICO)
+		return usbsid_reset();
+}

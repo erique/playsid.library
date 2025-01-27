@@ -127,7 +127,7 @@ SPRINT  macro
 		;xref	_custom,_ciaa,_ciab
 		;xref	@AllocEmulAudio,@FreeEmulAudio,@ReadIcon
 
-		xref	_sid_init,_sid_exit,_sid_write_reg_record,_sid_write_reg_playback
+		xref	_sid_init,_sid_exit,_sid_write_reg_record,_sid_write_reg_playback, _sid_reset
 
                 xdef    _PlaySidBase
 *=======================================================================*
@@ -5559,26 +5559,9 @@ flush_sid_usb_regs:
 	rts
 
 mute_sid_usb:
-	movem.l	d0-a6,-(sp)
-        moveq.l	#$00,d0 
-        moveq.l	#$00,d1
-        jsr	_sid_write_reg
-        moveq.l	#$01,d0 
-        moveq.l	#$00,d1
-        jsr	_sid_write_reg
-        moveq.l	#$07,d0 
-        moveq.l	#$00,d1
-        jsr	_sid_write_reg
-        moveq.l	#$08,d0 
-        moveq.l	#$00,d1
-        jsr	_sid_write_reg
-        moveq.l	#$0e,d0 
-        moveq.l	#$00,d1
-        jsr	_sid_write_reg
-        moveq.l	#$0f,d0 
-        moveq.l	#$00,d1
-        jsr	_sid_write_reg
-	movem.l	(sp)+,d0-a6
+    movem.l d0-a6,-(sp)     ; paranoia
+    jsr _sid_reset
+    movem.l (sp)+,d0-a6
 	rts
 
 *-----------------------------------------------------------------------*
