@@ -186,11 +186,11 @@ uint8_t usbsid_read_reg(register uint8_t reg __asm("d0"))
 
     uint8_t buf[] = { sid_address(reg), 0x00 };
     bool success = writePacket(SID_READ, buf, sizeof(buf));
-    Signal(usb->mainTask, SIGBREAKF_CTRL_D);
 
     if (!success)
         return 0xff;
 
+    Signal(usb->mainTask, SIGBREAKF_CTRL_D);
     Wait(SIGBREAKF_CTRL_D);
     usb->ctrlTask = NULL;
 
@@ -575,8 +575,8 @@ static uint8_t AllocSID(struct USBSID_Pico* usb)
                     PPA_NakTimeoutTime, 100,
                     TAG_END);
 
-        uint8_t dummy;
-        psdDoPipe(usb->inPipe, &dummy, 1);
+        // uint8_t dummy;
+        // psdDoPipe(usb->inPipe, &dummy, 1);
 
     }
 
@@ -692,8 +692,10 @@ static bool writePacket(uint8_t command, const uint8_t* packet, uint16_t length)
             kprintf("command mismatch!\n");
 
             // heavy-handed reschedule - lower task pri, and then set it back
-            struct Task* task = FindTask(NULL);
-            SetTaskPri(task, SetTaskPri(task, usb->taskpri - 1));
+            SysBase->SysFlags |= 0x8000; // trigger reschedule
+            // struct Task* task = FindTask(NULL);
+            // SetTaskPri(task, SetTaskPri(task, usb->taskpri - 1));
+            return false;
             continue;
         }
 
