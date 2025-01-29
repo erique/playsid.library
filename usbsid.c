@@ -170,7 +170,7 @@ void usbsid_exit()
 
 static inline uint8_t sid_address(uint8_t reg)
 {
-    return (reg & ~0x20) | (2 * (reg & 0x20));
+    return reg; //(reg & ~0x20) | (2 * (reg & 0x20));
 }
 
 uint8_t usbsid_read_reg(register uint8_t reg __asm("d0"))
