@@ -1751,7 +1751,7 @@ int main(int argc, char **argv)
     print_help_skpico();
     goto exit;
   }
-  fprintf(stdout, "Detecting Linux usbsid boards\n");
+  fprintf(stdout, "Detecting Amiga usbsid boards\n");
 
   if (usid_dev != 0) {
     rc = usbsid_init();
