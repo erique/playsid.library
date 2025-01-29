@@ -5450,21 +5450,29 @@ outBuffer       ds.b    256
 *    d6 = data
 *    d7 = address
 write_sid_usb_reg:
-;    cmp.b   #$20,d7     * SIDBlaster: accept SID1 writes only
-;    bhs.b   .x
 	movem.l	d0-a6,-(sp)
     moveq   #0,d0
     moveq   #0,d1
 	move.b	d7,d0
 	move.b	d6,d1
-
-;	and.b	#~$20,d0	; clear SID2 bit
-;	and.b	#$20,d7
-;	add.b	d7,d7
-;	add.b	d7,d0		; move SID2 bit from $d420 to $d440
-
 	jsr	_sid_write_reg_record
-	movem.l	(sp)+,d0-a6
+
+    ; if this is a 1SID mirror to the second SID, if available
+    move.w  psb_Sid2Address(a2),d0
+    or.w    psb_Sid3Address(a2),d0
+    tst.w   d0
+    bne.b   .multisid
+
+    moveq   #0,d0
+    moveq   #0,d1
+    move.b  d7,d0
+    or.b    #$20,d0
+    move.b  d6,d1
+    jsr _sid_write_reg_record
+
+.multisid
+    movem.l (sp)+,d0-a6
+
 .x	rts
 
 start_sid_usb:
