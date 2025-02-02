@@ -5828,12 +5828,10 @@ CloseIRQ	tst.w	psb_TimerBFlag(a6)
 *-----------------------------------------------------------------------*
 InitTimers
 		move.w	psb_TimerConstA(a6),d0		; ~700
-        tst.w   psb_OperatingMode(a6)
-        bne.b   .1
 		bsr	StopTimerA
 		bsr	SetTimerA
 		bsr	StartTimerA
-.1		
+
         bsr	StopTimerB
 		move.w	psb_TimerConstB(a6),d0		; ~14000
 		bsr	SetTimerB
@@ -5842,48 +5840,57 @@ InitTimers
 
 *-----------------------------------------------------------------------*
 SetTimerA
+        tst.w   psb_TimerAFlag(a6)
+        beq.b   .x
 		lea	_ciab,a0
 		move.b	d0,ciatalo(a0)
 		lsr.w	#8,d0
 		move.b	d0,ciatahi(a0)
-		rts
+.x		rts
 
 *-----------------------------------------------------------------------*
 SetTimerB
+        tst.w   psb_TimerBFlag(a6)
+        beq.b   .x
 		lea	_ciab,a0
 		move.b	d0,ciatblo(a0)
 		lsr.w	#8,d0
 		move.b	d0,ciatbhi(a0)
-		rts
+.x		rts
 
 *-----------------------------------------------------------------------*
 StopTimerA
-        tst.w   psb_OperatingMode(a6)
-        bne.b   .1
+        tst.w   psb_TimerAFlag(a6)
+        beq.b   .x
 		lea	_ciab,a0
 		and.b	#CIACRAF_TODIN+CIACRAF_SPMODE+CIACRAF_OUTMODE+CIACRAF_PBON,ciacra(a0)	; Timer A Cia B
 		bclr	#CIACRAB_START,ciacra(a0)
-.1
-		rts
+.x		rts
 
 *-----------------------------------------------------------------------*
 StopTimerB
+        tst.w   psb_TimerBFlag(a6)
+        beq.b   .x
 		lea	_ciab,a0
 		and.b	#CIACRBF_ALARM+CIACRBF_OUTMODE+CIACRBF_PBON,ciacrb(a0)	; Timer B Cia B
 		bclr	#CIACRBB_START,ciacrb(a0)
-		rts
+.x		rts
 
 *-----------------------------------------------------------------------*
 StartTimerA
+        tst.w   psb_TimerAFlag(a6)
+        beq.b   .x
 		lea	_ciab,a0
 		bset	#CIACRBB_START,ciacra(a0)
-		rts
+.x		rts
 
 *-----------------------------------------------------------------------*
 StartTimerB
+        tst.w   psb_TimerBFlag(a6)
+        beq.b   .x
 		lea	_ciab,a0
 		bset	#CIACRBB_START,ciacrb(a0)
-		rts
+.x		rts
 
 *-----------------------------------------------------------------------*
 PlayDisable					;Turns off all Audio
