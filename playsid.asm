@@ -957,10 +957,40 @@ isResidActive:
         jsr     sid_set_chip_model
         move.l  (sp)+,a5
 .3
+        bsr     patchSong
+
 		;CALLEXEC Permit
 		rts
 
+; Patch out rasterline checks. Some
+; SIDs wait for these in the init phase
+; and get stuck.
+patchSong:
+    move.l  psb_SongLocation(a6),a0
+    move.w  psb_SongLength(a6),d0
+    lea     (a0,d0),a1      * end
+.loop1
+    moveq   #.dataE-.data-1,d1
+    lea     .data(pc),a2
+.loop2
+    cmp.l   a1,a0
+    beq.b   .out
+    cmpm.b  (a2)+,(a0)+
+    dbne    d1,.loop2
+    tst.w   d1
+    bpl.b   .loop1
+    move.b  #$ea,-(a0)
+    move.b  #$ea,-(a0)
+    DPRINT  "Patched out rasterline check!"
+.out
+    rts
 
+;CD 12 D0   L0002     CMP $D012
+;D0 FB                BNE L0002
+;NOP = 0xEA i
+.data   dc.b    $cd,$12,$d0,$d0,$fb
+.dataE
+ even
 
 * In:  
 *   a0 = module
