@@ -47,7 +47,8 @@ SAMPLES_PER_FRAME_200Hz = 141876
 
 * Output buffer size, this needs to be big enough, exact size not important.
 * "single speed" buffer is 554 bytes
-SAMPLE_BUFFER_SIZE = 600
+* Timewarp Spheres 2SID is "half speed", needs about double this.
+SAMPLE_BUFFER_SIZE = 1200
 
 * Enable debug logging into a console window
 * Enable debug colors
@@ -982,12 +983,15 @@ patchSong:
     move.b  #$ea,-(a0)
     move.b  #$ea,-(a0)
     DPRINT  "Patched out rasterline check!"
+    bra     .loop1
+
 .out
+
     rts
 
 ;CD 12 D0   L0002     CMP $D012
 ;D0 FB                BNE L0002
-;NOP = 0xEA i
+;NOP = 0xEA
 .data   dc.b    $cd,$12,$d0,$d0,$fb
 .dataE
  even
