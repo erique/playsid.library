@@ -7,3 +7,4 @@ void    usbsid_write_reg(register uint8_t reg __asm("d0"), register uint8_t valu
 void    usbsid_write_reg_record(register uint8_t reg __asm("d0"), register uint8_t value __asm("d1"));
 void    usbsid_write_reg_playback();
 void    usbsid_reset();
+void	usbsid_set_num_sids(register uint8_t num_sids __asm("d0"));

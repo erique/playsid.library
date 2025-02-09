@@ -13,3 +13,4 @@ void    sid_write_reg(register uint8_t reg __asm("d0"), register uint8_t value _
 void    sid_write_reg_record(register uint8_t reg __asm("d0"), register uint8_t value __asm("d1"));
 void    sid_write_reg_playback();
 void    sid_reset();
+void	sid_set_num_sids(register uint8_t num_sids __asm("d0"));

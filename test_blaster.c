@@ -47,6 +47,8 @@ int main(int argc, const char** argv)
         return -1;
     }
 
+    sid_set_num_sids(1);
+
     struct Library* PsdBase;
     if(!(PsdBase = OpenLibrary("poseidon.library", 1)))
     {

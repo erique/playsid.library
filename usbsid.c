@@ -17,6 +17,9 @@
 #define SID_CYCLED_WRITE    (2 << 6)                /*       0b10 ~ 0x80 */
 #define SID_COMMAND         (3 << 6)                /*       0b11 ~ 0xC0 */
 #define SID_RESET_SID       (14)                    /*     0b1110 ~ 0x0E */
+#define SID_CONFIG          (18)
+#define SID_RELOAD_CONFIG   (0x38)  /* Reload and apply stored config from flash */
+#define SID_MIRRORED_SID    (0x45)
 
 #define EP_SIZE             (0x40)                  /* endpoint size     */
 #define MAX_PACKET_SIZE     (EP_SIZE - 1)           /* max command size  */
@@ -41,6 +44,7 @@ struct USBSID_Pico
 
     struct Task*        ctrlTask;
     struct Task*        mainTask;
+    struct Task*        flushTask;
 
     struct Library*     psdLibrary;
     struct MsgPort*     msgPort;
@@ -66,6 +70,7 @@ static struct USBSID_Pico* usb = NULL;
 
 static void SIDTask();
 static bool writePacket(uint8_t command, const uint8_t* packet, uint16_t length);
+static void writePacketAndFlush(uint8_t command, const uint8_t* packet, uint16_t length);
 static uint8_t readResult();
 static uint32_t deviceUnplugged(register struct Hook *hook __asm("a0"), register APTR object __asm("a2"), register APTR message __asm("a1"));
 typedef ULONG (*HOOKFUNC_ULONG)();  // NDK typedef HOOKFUNC with 'unsigned long'
@@ -108,6 +113,7 @@ uint8_t usbsid_init(register uint8_t latency __asm("d0"), register int8_t taskpr
     } else {
         kprintf("psdSpawnSubTask fail\n");
     }
+
     usb->ctrlTask = NULL;
 
     if (usb->mainTask)
@@ -180,10 +186,7 @@ uint8_t usbsid_read_reg(register uint8_t reg __asm("d0"))
     usb->ctrlTask = FindTask(NULL);
 
     uint8_t buf[] = { reg, 0x00 };
-    bool success = writePacket(SID_READ, buf, sizeof(buf));
-
-    if (!success)
-        return 0xff;
+    writePacketAndFlush(SID_READ, buf, sizeof(buf));
 
     Signal(usb->mainTask, SIGBREAKF_CTRL_D);
     Wait(SIGBREAKF_CTRL_D);
@@ -244,8 +247,11 @@ void usbsid_reset()
     if (usb->pendingRecorded)
         usbsid_write_reg_playback();
 
-    // uint8_t buf[] = { 1 /* reset_sid_registers */ };
-    // writePacket(SID_COMMAND | SID_RESET_SID, buf, sizeof(buf));
+    if (1)
+    {
+        uint8_t buf[] = { 1 /* reset_sid_registers */, 0, 0, 0, 0 };
+        writePacketAndFlush(SID_COMMAND | SID_RESET_SID, buf, sizeof(buf));
+    }
 
     for (uint16_t sid = 0xd400; sid <= 0xd420; sid += 0x20)
     {
@@ -255,6 +261,25 @@ void usbsid_reset()
             usbsid_write_reg_record(offset + reg, 0x00);
 
         usbsid_write_reg_playback();
+    }
+}
+
+void usbsid_set_num_sids(register uint8_t num_sids __asm("d0"))
+{
+    if (!(usb && !usb->deviceLost))
+        return;
+
+    if (num_sids == 1)
+    {
+        kprintf("** 1SID\n");
+        uint8_t buf[] = { SID_MIRRORED_SID, 1 /* override temporarily */, 0, 0, 0 };
+        writePacketAndFlush(SID_COMMAND | SID_CONFIG, buf, sizeof(buf));
+    }
+    else
+    {
+        kprintf("** 2/3SID\n");
+        uint8_t buf[] = { SID_RELOAD_CONFIG, 0, 0, 0, 0 };
+        writePacketAndFlush(SID_COMMAND | SID_CONFIG, buf, sizeof(buf));
     }
 }
 
@@ -302,7 +327,15 @@ static void SIDTask()
                 struct Buffer* buffer = &usb->outBuffers[usb->outBufferNum];
                 usb->outBufferNum ^= 1;
                 usb->outBuffers[usb->outBufferNum].pending = 0;
+                struct Task* flushTask = usb->flushTask;
+                usb->flushTask = NULL;
                 Enable();
+
+                if (flushTask)
+                {
+                    kprintf("Signal flush (this = %08lx ; flush task = %08lx\n", FindTask(NULL), flushTask);
+                    Signal(flushTask, SIGBREAKF_CTRL_F);
+                }
 
                 if (buffer->pending)
                 {
@@ -356,8 +389,10 @@ static void SIDTask()
                         {
                             do
                             {
+                                kprintf("psdWaitPipe .. ");
                                 uint32_t ioerr = psdWaitPipe(usb->inPipe);
                                 uint32_t actual = psdGetPipeActual(usb->inPipe);
+                                kprintf("ioerr = %08lx ; actual = %08lx\n", ioerr, actual);
 
                                 if(ioerr)
                                 {
@@ -705,6 +740,28 @@ static bool writePacket(uint8_t command, const uint8_t* packet, uint16_t length)
         break;
     }
     return true;
+}
+
+static void flushStream()
+{
+#ifndef kprintf
+    { struct Task* this = FindTask(NULL); kprintf("flushStream   (this = %08lx, '%s')\n", this, this->tc_Node.ln_Name ? this->tc_Node.ln_Name : "<noname>"); }
+#endif
+    usb->flushTask = FindTask(NULL);
+    SetSignal(0, SIGBREAKF_CTRL_F);
+    Signal(usb->mainTask, SIGBREAKF_CTRL_D);
+    Wait(SIGBREAKF_CTRL_F);
+    usb->flushTask = NULL;
+}
+
+static void writePacketAndFlush(uint8_t command, const uint8_t* packet, uint16_t length)
+{
+    // keep retrying to write packet
+    while(!writePacket(command, packet, length))
+        flushStream();
+
+    // make sure it's been picked up
+    flushStream();
 }
 
 static uint8_t readResult()

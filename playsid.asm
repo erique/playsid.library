@@ -127,7 +127,7 @@ SPRINT  macro
 		;xref	_custom,_ciaa,_ciab
 		;xref	@AllocEmulAudio,@FreeEmulAudio,@ReadIcon
 
-		xref	_sid_init,_sid_exit,_sid_write_reg_record,_sid_write_reg_playback, _sid_reset
+		xref	_sid_init,_sid_exit,_sid_write_reg_record,_sid_write_reg_playback, _sid_reset, _sid_set_num_sids
 
                 xdef    _PlaySidBase
 *=======================================================================*
@@ -928,6 +928,9 @@ isResidActive:
         bsr     getSid3Address
         bsr     getSidChipVersion
         bsr     setAutoResidMode
+
+        bsr     set_num_sids
+
         bsr     patchSong
 
 		;CALLEXEC Permit
@@ -5518,21 +5521,14 @@ outBuffer       ds.b    256
 *    d6 = data
 *    d7 = address
 write_sid_usb_reg:
-;    cmp.b   #$20,d7     * SIDBlaster: accept SID1 writes only
-;    bhs.b   .x
 	movem.l	d0-a6,-(sp)
     moveq   #0,d0
     moveq   #0,d1
 	move.b	d7,d0
 	move.b	d6,d1
-
-;	and.b	#~$20,d0	; clear SID2 bit
-;	and.b	#$20,d7
-;	add.b	d7,d7
-;	add.b	d7,d0		; move SID2 bit from $d420 to $d440
-
 	jsr	_sid_write_reg_record
-	movem.l	(sp)+,d0-a6
+    movem.l (sp)+,d0-a6
+
 .x	rts
 
 start_sid_usb:
@@ -5563,6 +5559,21 @@ mute_sid_usb:
     jsr _sid_reset
     movem.l (sp)+,d0-a6
 	rts
+
+
+set_num_sids:
+    movem.l d0-a6,-(sp)     ; paranoia
+    moveq.l #1,d0
+    tst.w   psb_Sid2Address(a6)
+    beq.b   .set
+    moveq.l #2,d0
+    tst.w   psb_Sid3Address(a6)
+    beq.b   .set
+    moveq.l #3,d0
+.set
+    jsr _sid_set_num_sids
+    movem.l (sp)+,d0-a6
+    rts
 
 *-----------------------------------------------------------------------*
 * ZorroSID

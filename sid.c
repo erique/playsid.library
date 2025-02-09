@@ -72,3 +72,9 @@ void sid_reset()
 	if (backend == OM_USBSID_PICO)
 		return usbsid_reset();
 }
+
+void sid_set_num_sids(register uint8_t num_sids __asm("d0"))
+{
+	if (backend == OM_USBSID_PICO)
+		return usbsid_set_num_sids(num_sids);
+}
