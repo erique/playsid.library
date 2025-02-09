@@ -12,8 +12,8 @@ CFLAGS := -O2 -g -noixemul -m68020 -mregparm=4 -fomit-frame-pointer -DPLAYSID
 SOURCE   := playsid.asm
 INCLUDES := playsid_libdefs.i external.asm resid-68k/resid-68k.s resid-68k/resid-68k.i
 
-TARGET   := playsid.library test_blaster
-# test_blaster
+TARGET   := playsid.library test_blaster cfg_usbsid
+# test_blaster cfg_usbsid
 LISTFILE := playsid.txt
 
 ##
@@ -60,3 +60,6 @@ playsid.library: playsid.library.sym
 
 test_blaster: test_blaster.c sid.c sidblast.c usbsid.c $(GIT_HEADER)
 	$(GCC) -O2 -noixemul -m68020 --omit-frame-pointer -Wl,-Map,test_blaster.map,--cref $^ -o $@
+
+cfg_usbsid: config-tool/cfg_usbsid.c config-tool/inih/ini.c config-tool/libusb.c $(GIT_HEADER)
+	$(GCC) -O2 -noixemul -m68020 --omit-frame-pointer -Wl,-Map,cfg_usbsid.map,--cref $^ -o $@ -I config-tool
