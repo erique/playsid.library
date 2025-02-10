@@ -47,7 +47,8 @@ SAMPLES_PER_FRAME_200Hz = 141876
 
 * Output buffer size, this needs to be big enough, exact size not important.
 * "single speed" buffer is 554 bytes
-SAMPLE_BUFFER_SIZE = 600
+* Timewarp Spheres 2SID is "half speed", needs about double this.
+SAMPLE_BUFFER_SIZE = 1200
 
 * Enable debug logging into a console window
 * Enable debug colors
@@ -469,6 +470,8 @@ GetEnvMode:
     beq     .5
     cmp.l   #"zorr",d0
     beq     .6
+    cmp.l   #"usbp",d0
+    beq     .7
     bra     .1 * default
 .x  rts
 
@@ -500,6 +503,11 @@ GetEnvMode:
 .6
     DPRINT  "PlaySIDMode=ZorroSID"
     moveq   #OM_ZORROSID,d0
+    bsr     @SetOperatingMode
+    rts
+.7
+    DPRINT  "PlaySIDMode=USBSID-Pico"
+    moveq   #OM_USBSID_PICO,d0
     bsr     @SetOperatingMode
     rts
 
@@ -922,15 +930,71 @@ isResidActive:
 
 		move.w	#1,psb_SongSetFlag(a6)
         move.l  (sp)+,a1
-
         bsr     getSid2Address
         bsr     getSid3Address
         bsr     getSidChipVersion
 
+        cmp.w   #OM_RESID_AUTO,psb_OperatingMode(a6)
+        bne     .3
+        ; Determine chip model - based on header
+        moveq   #CHIP_MODEL_MOS6581,d0
+        cmp     #%01,psb_HeaderChipVersion(a6)
+        beq     .4
+        moveq   #CHIP_MODEL_MOS8580,d0
+        cmp     #%10,psb_HeaderChipVersion(a6)
+        beq     .4
+        * Default fallback
+        moveq   #CHIP_MODEL_MOS6581,d0
+.4      
+        move.l  a5,-(sp)        * sid_set_chip_model clobbers a5
+        move.l  d0,-(sp)
+        move.l  psb_reSID(a6),a0
+        jsr     sid_set_chip_model
+        move.l  (sp),d0
+        move.l  psb_reSID2(a6),a0
+        jsr     sid_set_chip_model
+        move.l  (sp)+,d0
+        move.l  psb_reSID3(a6),a0
+        jsr     sid_set_chip_model
+        move.l  (sp)+,a5
+.3
+        bsr     patchSong
+
 		;CALLEXEC Permit
 		rts
 
+; Patch out rasterline checks. Some
+; SIDs wait for these in the init phase
+; and get stuck.
+patchSong:
+    move.l  psb_SongLocation(a6),a0
+    move.w  psb_SongLength(a6),d0
+    lea     (a0,d0),a1      * end
+.loop1
+    moveq   #.dataE-.data-1,d1
+    lea     .data(pc),a2
+.loop2
+    cmp.l   a1,a0
+    beq.b   .out
+    cmpm.b  (a2)+,(a0)+
+    dbne    d1,.loop2
+    tst.w   d1
+    bpl.b   .loop1
+    move.b  #$ea,-(a0)
+    move.b  #$ea,-(a0)
+    DPRINT  "Patched out rasterline check!"
+    bra     .loop1
 
+.out
+
+    rts
+
+;CD 12 D0   L0002     CMP $D012
+;D0 FB                BNE L0002
+;NOP = 0xEA
+.data   dc.b    $cd,$12,$d0,$d0,$fb
+.dataE
+ even
 
 * In:  
 *   a0 = module
@@ -1004,6 +1068,7 @@ getSid3Address:
 * In:  
 *   a0 = module
 getSidChipVersion:
+    DPRINT  "getSidChipVersion"
     move.w  #%01,psb_HeaderChipVersion(a6)
     cmp     #2,sidh_version(a0)
     blo     .v1
@@ -5797,12 +5862,10 @@ CloseIRQ	tst.w	psb_TimerBFlag(a6)
 *-----------------------------------------------------------------------*
 InitTimers
 		move.w	psb_TimerConstA(a6),d0		; ~700
-        tst.w   psb_OperatingMode(a6)
-        bne.b   .1
 		bsr	StopTimerA
 		bsr	SetTimerA
 		bsr	StartTimerA
-.1		
+
         bsr	StopTimerB
 		move.w	psb_TimerConstB(a6),d0		; ~14000
 		bsr	SetTimerB
@@ -5811,48 +5874,57 @@ InitTimers
 
 *-----------------------------------------------------------------------*
 SetTimerA
+        tst.w   psb_TimerAFlag(a6)
+        beq.b   .x
 		lea	_ciab,a0
 		move.b	d0,ciatalo(a0)
 		lsr.w	#8,d0
 		move.b	d0,ciatahi(a0)
-		rts
+.x		rts
 
 *-----------------------------------------------------------------------*
 SetTimerB
+        tst.w   psb_TimerBFlag(a6)
+        beq.b   .x
 		lea	_ciab,a0
 		move.b	d0,ciatblo(a0)
 		lsr.w	#8,d0
 		move.b	d0,ciatbhi(a0)
-		rts
+.x		rts
 
 *-----------------------------------------------------------------------*
 StopTimerA
-        tst.w   psb_OperatingMode(a6)
-        bne.b   .1
+        tst.w   psb_TimerAFlag(a6)
+        beq.b   .x
 		lea	_ciab,a0
 		and.b	#CIACRAF_TODIN+CIACRAF_SPMODE+CIACRAF_OUTMODE+CIACRAF_PBON,ciacra(a0)	; Timer A Cia B
 		bclr	#CIACRAB_START,ciacra(a0)
-.1
-		rts
+.x		rts
 
 *-----------------------------------------------------------------------*
 StopTimerB
+        tst.w   psb_TimerBFlag(a6)
+        beq.b   .x
 		lea	_ciab,a0
 		and.b	#CIACRBF_ALARM+CIACRBF_OUTMODE+CIACRBF_PBON,ciacrb(a0)	; Timer B Cia B
 		bclr	#CIACRBB_START,ciacrb(a0)
-		rts
+.x		rts
 
 *-----------------------------------------------------------------------*
 StartTimerA
+        tst.w   psb_TimerAFlag(a6)
+        beq.b   .x
 		lea	_ciab,a0
 		bset	#CIACRBB_START,ciacra(a0)
-		rts
+.x		rts
 
 *-----------------------------------------------------------------------*
 StartTimerB
+        tst.w   psb_TimerBFlag(a6)
+        beq.b   .x
 		lea	_ciab,a0
 		bset	#CIACRBB_START,ciacrb(a0)
-		rts
+.x		rts
 
 *-----------------------------------------------------------------------*
 PlayDisable					;Turns off all Audio
@@ -9131,16 +9203,7 @@ initResid:
     moveq   #CHIP_MODEL_MOS8580,d0
     cmp.w   #OM_RESID_8580,psb_OperatingMode(a6)
     beq.b   .1
-    cmp.w   #OM_RESID_AUTO,psb_OperatingMode(a6)
-    bne     .1
-    ; Determine chip model - based on header
-    moveq   #CHIP_MODEL_MOS6581,d0
-    cmp     #%01,psb_HeaderChipVersion(a6)
-    beq     .1
-    moveq   #CHIP_MODEL_MOS8580,d0
-    cmp     #%10,psb_HeaderChipVersion(a6)
-    beq     .1
-    * Default fallback
+    * Default fallback - auto mode will he handled later
     moveq   #CHIP_MODEL_MOS6581,d0
 .1
     push    d0
