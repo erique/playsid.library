@@ -5535,7 +5535,7 @@ start_sid_usb:
     DPRINT  "start_sid_usb"
 	movem.l	d1-a6,-(sp)
 	moveq.l	#$10,d1	; latency
-	moveq.l	#$5,d2	; taskpri
+	moveq.l	#$15,d2	; taskpri
 	jsr	_sid_init
     extb.l  d0
 .fail	movem.l	(sp)+,d1-a6
