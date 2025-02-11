@@ -208,7 +208,7 @@ static void release_sidblaster(struct SIDBlasterUSB* usb)
 
 static inline uint8_t sid_address(uint8_t reg)
 {
-    return (reg & 0x20) ? 0x01 : 0x00;
+    return (reg >> 5) & 0x7;
 }
 
 uint8_t sid_read_reg(register uint8_t reg __asm("d0"))
