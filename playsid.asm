@@ -9926,6 +9926,17 @@ sid1PostClockUpdate:
     lsr     #2,d0
     move.w  d0,psb_Envelope6(a1)
 
+    move.l  psb_reSID3(a1),a0
+    move.w  resid_envelope1+envelope_counterHi(a0),d0
+    lsr     #2,d0
+    move.w  d0,psb_Envelope7(a1)
+    move.w  resid_envelope2+envelope_counterHi(a0),d0
+    lsr     #2,d0
+    move.w  d0,psb_Envelope8(a1)
+    move.w  resid_envelope3+envelope_counterHi(a0),d0
+    lsr     #2,d0
+    move.w  d0,psb_Envelope9(a1)
+
  if LOG_ADSR_ENV
     movem.l d0-d7,-(sp)
     move.l  _PlaySidBase,a1

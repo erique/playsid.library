@@ -208,6 +208,9 @@ FREE		MACRO
     UWORD   psb_Envelope4
     UWORD   psb_Envelope5
     UWORD   psb_Envelope6
+    UWORD   psb_Envelope7
+    UWORD   psb_Envelope8
+    UWORD   psb_Envelope9
 	LABEL	psb_SIZEOF
 
 ; --- Error --------------------------------------------------------------
