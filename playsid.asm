@@ -127,7 +127,7 @@ SPRINT  macro
 		;xref	_custom,_ciaa,_ciab
 		;xref	@AllocEmulAudio,@FreeEmulAudio,@ReadIcon
 
-		xref	_sid_init,_sid_exit,_sid_write_reg_record,_sid_write_reg_playback
+		xref	_sid_init,_sid_exit,_sid_write_reg_record,_sid_write_reg_playback, _sid_reset, _sid_set_num_sids
 
                 xdef    _PlaySidBase
 *=======================================================================*
@@ -350,24 +350,18 @@ AutoInitFunction
         move.l  a5,a6
         bsr     GetEnvSettingsPre
        
-        cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
-        bne.b   .noBlaster
-        bsr     start_sid_blaster
-		tst.l	d0
-        bne    .Exit
-.noBlaster
         cmp.w   #OM_ZORROSID,psb_OperatingMode(a6)
         bne.b   .noZorroSid
         bsr     init_zorrosid
         tst.l   d0
         bne     .Exit
 .noZorroSid 
-        cmp.w   #OM_USBSID_PICO,psb_OperatingMode(a6)
-        bne.b   .noUSBSIDPico
-    	moveq.l	#SID_NOUSBSIDPICO,d0
-        tst.l   d0
-        bne     .Exit
-.noUSBSIDPico
+
+	; usb driver is a no-op for any operating modes it doesn't support
+	move.w	psb_OperatingMode(a6),d0
+        bsr     start_sid_usb
+	tst.l	d0
+        bne    .Exit
 
         bsr	    AllocEmulMem
 		tst.l	d0
@@ -752,7 +746,7 @@ convertHexTextToNumber:
 		clr.w	psb_EmulResourceFlag(a6)
 
         ; Safe to call even if not initialized:
-        bsr     stop_sid_blaster
+        bsr     stop_sid_usb
 
         ; Not safe if initRESID has not been called earlier:    
         bsr     isResidActive
@@ -934,6 +928,9 @@ isResidActive:
         bsr     getSid3Address
         bsr     getSidChipVersion
         bsr     setAutoResidMode
+
+        bsr     set_num_sids
+
         bsr     patchSong
 
 		;CALLEXEC Permit
@@ -1371,10 +1368,10 @@ Play64:
 		bsr	    ReadDisplayData
 		bsr	    DisplayRequest
 .1
-        cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
-        bne.b	.2
-		bsr	flush_sid_regs
-.2
+
+                ; Safe to call even if not initialized:
+		bsr	flush_sid_usb_regs
+
 		bsr	CalcTime
 		bsr	CheckC64TimerA
 
@@ -5333,12 +5330,14 @@ writeSIDRegister:
     * Normal playsid mode
     rts
 .out
-    cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a2)
-    beq     write_sid_reg
     cmp.w   #OM_ZORROSID,psb_OperatingMode(a2)
     beq     write_zorrosid_reg
+
+    ; all usb sids go through the same funnel
+    cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a2)
+    beq     write_sid_usb_reg
     cmp.w   #OM_USBSID_PICO,psb_OperatingMode(a2)
-;   beq    TODO
+    beq     write_sid_usb_reg
 
     * OM_RESID_6581, OM_RESID_8580
 
@@ -5521,68 +5520,60 @@ outBuffer       ds.b    256
 * in:
 *    d6 = data
 *    d7 = address
-write_sid_reg:
-    cmp.b   #$20,d7     * SIDBlaster: accept SID1 writes only
-    bhs.b   .x
+write_sid_usb_reg:
 	movem.l	d0-a6,-(sp)
     moveq   #0,d0
     moveq   #0,d1
 	move.b	d7,d0
 	move.b	d6,d1
 	jsr	_sid_write_reg_record
-	movem.l	(sp)+,d0-a6
+    movem.l (sp)+,d0-a6
+
 .x	rts
 
-start_sid_blaster:
-    DPRINT  "start_sid_blaster"
+start_sid_usb:
+    DPRINT  "start_sid_usb"
 	movem.l	d1-a6,-(sp)
-	moveq.l	#$10,d0	; latency
-	moveq.l	#$5,d1	; taskpri
+	moveq.l	#$10,d1	; latency
+	moveq.l	#$15,d2	; taskpri
 	jsr	_sid_init
-	tst.l	d0
-	bne.b	.ok
-    DPRINT  "fail %ld"
-	moveq.l	#SID_NOSIDBLASTER,d0
-	bra.b	.fail
-.ok	clr.l	d0
+    extb.l  d0
 .fail	movem.l	(sp)+,d1-a6
 	rts
 
-stop_sid_blaster:
-    DPRINT  "stop_sid_blaster"
+stop_sid_usb:
+    DPRINT  "stop_sid_usb"
 	movem.l	d0-a6,-(sp)
 	jsr	_sid_exit
 	movem.l	(sp)+,d0-a6
 	rts
 
-flush_sid_regs:
+flush_sid_usb_regs:
 	movem.l	d0-a6,-(sp)		; paranoia
 	jsr	_sid_write_reg_playback
 	movem.l	(sp)+,d0-a6
 	rts
 
-mute_sid:
-	movem.l	d0-a6,-(sp)
-        moveq.l	#$00,d0 
-        moveq.l	#$00,d1
-        jsr	_sid_write_reg
-        moveq.l	#$01,d0 
-        moveq.l	#$00,d1
-        jsr	_sid_write_reg
-        moveq.l	#$07,d0 
-        moveq.l	#$00,d1
-        jsr	_sid_write_reg
-        moveq.l	#$08,d0 
-        moveq.l	#$00,d1
-        jsr	_sid_write_reg
-        moveq.l	#$0e,d0 
-        moveq.l	#$00,d1
-        jsr	_sid_write_reg
-        moveq.l	#$0f,d0 
-        moveq.l	#$00,d1
-        jsr	_sid_write_reg
-	movem.l	(sp)+,d0-a6
+mute_sid_usb:
+    movem.l d0-a6,-(sp)     ; paranoia
+    jsr _sid_reset
+    movem.l (sp)+,d0-a6
 	rts
+
+
+set_num_sids:
+    movem.l d0-a6,-(sp)     ; paranoia
+    moveq.l #1,d0
+    tst.w   psb_Sid2Address(a6)
+    beq.b   .set
+    moveq.l #2,d0
+    tst.w   psb_Sid3Address(a6)
+    beq.b   .set
+    moveq.l #3,d0
+.set
+    jsr _sid_set_num_sids
+    movem.l (sp)+,d0-a6
+    rts
 
 *-----------------------------------------------------------------------*
 * ZorroSID
@@ -5949,12 +5940,12 @@ PlayDisable					;Turns off all Audio
 		move.w	d0,AUD2VOL(a0)
 		move.w	d0,AUD3VOL(a0)
 .1
-        cmp.w   #OM_SIDBLASTER_USB,psb_OperatingMode(a6)
-        beq     mute_sid
+        ; Safe to call even if not initialized:
+        bsr     mute_sid_usb
+
         cmp.w   #OM_ZORROSID,psb_OperatingMode(a6)
         beq     mute_zorrosid
-        cmp.w   #OM_USBSID_PICO,psb_OperatingMode(a6)
-;        beq     TODO
+
         rts
 
 *-----------------------------------------------------------------------*

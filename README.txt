@@ -13,6 +13,7 @@ output methods:
 - The reSID emulation engine by Dag Lem (68060 or similar)
 - SIDBlaster-USB, a device that uses a SID chip for sound (kick 2.0+, 68020)
 - ZorroSID, a zorro card with a SID chip
+- USBSID-Pico, a device with support for dual/triple/quad SIDs (kick 2.0+, 68020)
 
 To use, copy "playsid.library" into LIBS:, replacing the original
 version. By default it will use the original SID emulation mode.
@@ -25,8 +26,8 @@ HippoPlayer also provides additional integration in the user interface.
 Configuring with environment variables
 --------------------------------------
 - Set operating mode: normal/classic mode, reSID 6581, reSID 8580, 
-  reSID auto detect, SIDBlaster USB, or ZorroSID
-  Variable: "PlaySIDMode", values: "Norm,6581,8580,Auto,Sidb,Zorr"
+  reSID auto detect, SIDBlaster USB, ZorroSID or USBSID-Pico
+  Variable: "PlaySIDMode", values: "Norm,6581,8580,Auto,Sidb,Zorr,UsbP"
 
 - Set reSID mode: normal, oversample 2x, 3x, 4x
   Variable: "PlaySIDreSIDMode", values: "Norm,Ovs2,Ovs3,Ovs4"
@@ -79,19 +80,19 @@ will disable it.
 reSID v0.16 Amiga port and integration by K-P
 
 
-SIDBlaster
-----------
+SIDBlaster / USBSID-Pico
+------------------------
 
-SIDBlaster is a USB device that can utilize an actual SID chip
+SIDBlaster & USBSID-Pico are USB devices that can utilize an actual SID chip
 and allow playback using it, providing a truly authentic sound. 
 
 In addition to some extra hardware and USB connectivity, 
 the Poseidon USB stack needs to be installed. 
 
 Digisamples will not be heard. The playsid.library sample handling 
-is not usable with SIDBlaster.
+is not usable with SIDBlaster/USBSID-Pico.
 
-SIDBlaster driver and integration by Erique
+USB driver and integration by eriQue
 
 
 ZorroSID
@@ -155,3 +156,5 @@ Changelog
               68060 than before. 
 - 2024-11   - Support for ZorroSID
   v1.8
+- 2025-02   - Support for USBSID-Pico
+  v1.9      - Support for 2SID and 3SID via multiple SIDBlasters

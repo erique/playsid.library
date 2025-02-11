@@ -12,8 +12,8 @@ CFLAGS := -O2 -g -noixemul -m68020 -mregparm=4 -fomit-frame-pointer -DPLAYSID
 SOURCE   := playsid.asm
 INCLUDES := playsid_libdefs.i external.asm resid-68k/resid-68k.s resid-68k/resid-68k.i
 
-TARGET   := playsid.library 
-#test_blaster
+TARGET   := playsid.library test_blaster cfg_usbsid
+# test_blaster cfg_usbsid
 LISTFILE := playsid.txt
 
 ##
@@ -43,14 +43,23 @@ playsid.o: playsid.asm $(INCLUDES) $(GIT_INCLUDE) Makefile
 	$(VASM) $< -o $@ -L $(LISTFILE) $(VASM_FLAGS) -Iresid-68k
 	$(OBJCOPY) --rename-section reSID_data=.data $@
 
+sid.o: sid.c $(GIT_HEADER) Makefile
+	$(GCC) -c $< -o $@ $(CFLAGS) -Wall -Os
+
 sidblast.o: sidblast.c $(GIT_HEADER) Makefile
 	$(GCC) -c $< -o $@ $(CFLAGS)
 
-playsid.library.sym: playsid.o sidblast.o
+usbsid.o: usbsid.c $(GIT_HEADER) Makefile
+	$(GCC) -c $< -o $@ $(CFLAGS) -Wall -Wno-pointer-sign
+
+playsid.library.sym: playsid.o sid.o sidblast.o usbsid.o
 	$(GCC) -m68020 -nostdlib -g -Wl,-Map,playsid.map,--cref $^ -o $@
 
 playsid.library: playsid.library.sym
 	$(STRIP) $^ -o $@
 
-test_blaster: test_blaster.c sidblast.c $(GIT_HEADER)
+test_blaster: test_blaster.c sid.c sidblast.c usbsid.c $(GIT_HEADER)
 	$(GCC) -O2 -noixemul -m68020 --omit-frame-pointer -Wl,-Map,test_blaster.map,--cref $^ -o $@
+
+cfg_usbsid: config-tool/cfg_usbsid.c config-tool/inih/ini.c config-tool/libusb.c $(GIT_HEADER)
+	$(GCC) -O2 -noixemul -m68020 --omit-frame-pointer -Wl,-Map,cfg_usbsid.map,--cref $^ -o $@ -I config-tool

@@ -5,7 +5,7 @@
 #include <proto/poseidon.h>
 #include <string.h>
 
-#include "sidblast.h"
+#include "sid.h"
 #include "git.gen.h"
 
 uint32_t timeout = 10;  // seconds
@@ -41,11 +41,13 @@ int main(int argc, const char** argv)
         return FALSE;
     }
 
-    if (!sid_init(latency, taskpri))
+    if (sid_init(OM_USBSID_PICO, latency, taskpri))
     {
         printf("sid init failed\n");
         return -1;
     }
+
+    sid_set_num_sids(1);
 
     struct Library* PsdBase;
     if(!(PsdBase = OpenLibrary("poseidon.library", 1)))
@@ -70,7 +72,7 @@ int main(int argc, const char** argv)
 
     GetSysTime(&startTime);
 
-    for (int i = 0x00; i <= 0x18; ++i)
+    for (int i = 0x00; i <= 0x1c; ++i)
         sid_write_reg_record(i, 0x00);
     sid_write_reg_playback();
 
@@ -157,7 +159,7 @@ int main(int argc, const char** argv)
     }
 
     // reset all registers
-    for (int i = 0x00; i <= 0x18; ++i)
+    for (int i = 0x00; i <= 0x1c; ++i)
         sid_write_reg_record(i, 0x00);
     sid_write_reg_playback();
 

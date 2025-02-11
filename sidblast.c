@@ -15,7 +15,7 @@
 #if 1 // NDEBUG
 #define kprintf(...) do {} while(0)
 #else
-int kprintf(const char* format, ...);
+static int kprintf(const char* format, ...);
 #endif
 
 #define SysBase (*(struct ExecBase **) (4L))
@@ -57,7 +57,7 @@ static uint32_t num_blasters = 0;
 static struct SIDBlasterUSB* blasters[8];
 
 static void SIDTask();
-static bool writePacket(struct SIDBlasterUSB* usb, uint8_t* packet, uint16_t length);
+static bool writePacket(struct SIDBlasterUSB* usb, const uint8_t* packet, uint16_t length);
 static uint8_t readResult(struct SIDBlasterUSB* usb);
 static uint32_t deviceUnplugged(register struct Hook *hook __asm("a0"), register APTR object __asm("a2"), register APTR message __asm("a1"));
 typedef ULONG (*HOOKFUNC_ULONG)();  // NDK typedef HOOKFUNC with 'unsigned long'
@@ -67,7 +67,7 @@ static const struct Hook hook = { .h_Entry = (HOOKFUNC_ULONG)deviceUnplugged };
 static struct SIDBlasterUSB* claim_sidblaster(uint8_t latency, uint8_t taskpri);
 static void release_sidblaster(struct SIDBlasterUSB* usb);
 
-uint8_t sid_init(register uint8_t latency __asm("d0"), register int8_t taskpri __asm("d1"))
+uint8_t sidblaster_init(register uint8_t latency __asm("d0"), register int8_t taskpri __asm("d1"))
 {
     kprintf("sidblaster_init\n");
     if (num_blasters) {
@@ -92,7 +92,7 @@ uint8_t sid_init(register uint8_t latency __asm("d0"), register int8_t taskpri _
     return num_blasters != 0;
 }
 
-void sid_exit()
+void sidblaster_exit()
 {
     kprintf("sidblaster_exit\n");
     if (!num_blasters) {
@@ -168,13 +168,7 @@ static void release_sidblaster(struct SIDBlasterUSB* usb)
     if(usb->mainTask)
     {
         kprintf("reset SID\n");
-        // reset SID output
-        sid_write_reg(0x00, 0x00);  // freq voice 1
-        sid_write_reg(0x01, 0x00);
-        sid_write_reg(0x07, 0x00);  // freq voice 2
-        sid_write_reg(0x08, 0x00);
-        sid_write_reg(0x0e, 0x00);  // freq voice 3
-        sid_write_reg(0x0f, 0x00);
+        sidblaster_reset();
     }
 
     struct Library* PsdBase = usb->psdLibrary;
@@ -211,13 +205,16 @@ static inline uint8_t sid_address(uint8_t reg)
     return (reg >> 5) & 0x7;
 }
 
-uint8_t sid_read_reg(register uint8_t reg __asm("d0"))
+uint8_t sidblaster_read_reg(register uint8_t reg __asm("d0"))
 {
     struct SIDBlasterUSB* usb = blasters[sid_address(reg)];
     reg &= 0x1f;
 
     if (!(usb && !usb->deviceLost))
         return 0x00;
+
+    // flush all recorded writes
+    // sidblaster_write_reg_playback();
 
     usb->ctrlTask = FindTask(NULL);
 
@@ -234,7 +231,7 @@ uint8_t sid_read_reg(register uint8_t reg __asm("d0"))
     return readResult(usb);
 }
 
-void sid_write_reg(register uint8_t reg __asm("d0"), register uint8_t value __asm("d1"))
+void sidblaster_write_reg(register uint8_t reg __asm("d0"), register uint8_t value __asm("d1"))
 {
     struct SIDBlasterUSB* usb = blasters[sid_address(reg)];
     reg &= 0x1f;
@@ -242,12 +239,15 @@ void sid_write_reg(register uint8_t reg __asm("d0"), register uint8_t value __as
     if (!(usb && !usb->deviceLost))
         return;
 
+    // flush all recorded writes
+    // sidblaster_write_reg_playback();
+
     uint8_t buf[] = { 0xe0 + reg, value };
     writePacket(usb, buf, sizeof(buf));
     Signal(usb->mainTask, SIGBREAKF_CTRL_D);
 }
 
-void sid_write_reg_record(register uint8_t reg __asm("d0"), register uint8_t value __asm("d1"))
+void sidblaster_write_reg_record(register uint8_t reg __asm("d0"), register uint8_t value __asm("d1"))
 {
     struct SIDBlasterUSB* usb = blasters[sid_address(reg)];
     reg &= 0x1f;
@@ -265,7 +265,7 @@ void sid_write_reg_record(register uint8_t reg __asm("d0"), register uint8_t val
     usb->pendingRecorded += 2;
 }
 
-void sid_write_reg_playback()
+void sidblaster_write_reg_playback()
 {   
     for (int i = 0; i < num_blasters; ++i)
     {
@@ -282,6 +282,31 @@ void sid_write_reg_playback()
     }
 }
 
+void sidblaster_reset()
+{
+    sidblaster_write_reg_playback();
+
+    const uint8_t regs[] = 
+    {
+        0xe0 + 0x00, 0x00, 
+        0xe0 + 0x01, 0x00, 
+        0xe0 + 0x07, 0x00, 
+        0xe0 + 0x08, 0x00, 
+        0xe0 + 0x0e, 0x00, 
+        0xe0 + 0x0f, 0x00
+    };
+
+    for (int i = 0; i < num_blasters; ++i)
+    {
+        struct SIDBlasterUSB* usb = blasters[i];
+        if (!(usb && !usb->deviceLost))
+            continue;
+
+        writePacket(usb, regs, sizeof(regs));
+        Signal(usb->mainTask, SIGBREAKF_CTRL_D);
+        usb->pendingRecorded = 0;
+    }
+}
 
 /*-------------------------------------------------------*/
 
@@ -633,7 +658,7 @@ static uint32_t deviceUnplugged(register struct Hook *hook __asm("a0"), register
     } while(0)
 
 
-static bool writePacket(struct SIDBlasterUSB* usb, uint8_t* packet, uint16_t length)
+static bool writePacket(struct SIDBlasterUSB* usb, const uint8_t* packet, uint16_t length)
 {
     while(TRUE)
     {
@@ -706,7 +731,7 @@ static void raw_put_char(uint32_t c __asm("d0"))
     RawPutChar(c);
 }
 
-int kvprintf(const char* format, va_list ap)
+static int kvprintf(const char* format, va_list ap)
 {
 //    __asm volatile("move.w #3546895/115200,0xdff032": : : "cc", "memory");
 
@@ -714,7 +739,7 @@ int kvprintf(const char* format, va_list ap)
     return 0;
 }
 
-int kprintf(const char* format, ...)
+static int kprintf(const char* format, ...)
 {
     if (format == NULL)
         return 0;
