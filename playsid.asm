@@ -933,43 +933,48 @@ isResidActive:
         bsr     getSid2Address
         bsr     getSid3Address
         bsr     getSidChipVersion
-
-        cmp.w   #OM_RESID_AUTO,psb_OperatingMode(a6)
-        bne     .3
-        ; Determine chip model - based on header
-        moveq   #CHIP_MODEL_MOS6581,d0
-        cmp     #%01,psb_HeaderChipVersion(a6)
-        beq     .4
-        moveq   #CHIP_MODEL_MOS8580,d0
-        cmp     #%10,psb_HeaderChipVersion(a6)
-        beq     .4
-        * Default fallback
-        moveq   #CHIP_MODEL_MOS6581,d0
-.4      
-        move.l  a5,-(sp)        * sid_set_chip_model clobbers a5
-        move.l  d0,-(sp)
-        move.l  psb_reSID(a6),a0
-        jsr     sid_set_chip_model
-        move.l  (sp),d0
-        move.l  psb_reSID2(a6),a0
-        jsr     sid_set_chip_model
-        move.l  (sp)+,d0
-        move.l  psb_reSID3(a6),a0
-        jsr     sid_set_chip_model
-        move.l  (sp)+,a5
-.3
+        bsr     setAutoResidMode
         bsr     patchSong
 
 		;CALLEXEC Permit
 		rts
+
+* Configure reSID chip based on SID header information
+setAutoResidMode:
+    cmp.w   #OM_RESID_AUTO,psb_OperatingMode(a6)
+    bne.b   .3
+    ; Determine chip model - based on header
+    moveq   #CHIP_MODEL_MOS6581,d0
+    cmp     #%01,psb_HeaderChipVersion(a6)
+    beq.b   .4
+    moveq   #CHIP_MODEL_MOS8580,d0
+    cmp     #%10,psb_HeaderChipVersion(a6)
+    beq.b   .4
+    * Default fallback
+    moveq   #CHIP_MODEL_MOS6581,d0
+.4     
+    move.l  a5,-(sp)        * sid_set_chip_model clobbers a5
+    move.l  d0,-(sp)
+    move.l  psb_reSID(a6),a0
+    jsr     sid_set_chip_model
+    move.l  (sp),d0
+    move.l  psb_reSID2(a6),a0
+    jsr     sid_set_chip_model
+    move.l  (sp)+,d0
+    move.l  psb_reSID3(a6),a0
+    jsr     sid_set_chip_model
+    move.l  (sp)+,a5
+.3
+    rts
 
 ; Patch out rasterline checks. Some
 ; SIDs wait for these in the init phase
 ; and get stuck.
 patchSong:
     move.l  psb_SongLocation(a6),a0
+    moveq   #0,d0
     move.w  psb_SongLength(a6),d0
-    lea     (a0,d0),a1      * end
+    lea     (a0,d0.l),a1      * end
 .loop1
     moveq   #.dataE-.data-1,d1
     lea     .data(pc),a2
@@ -980,13 +985,11 @@ patchSong:
     dbne    d1,.loop2
     tst.w   d1
     bpl.b   .loop1
-    move.b  #$ea,-(a0)
-    move.b  #$ea,-(a0)
+    move.b  #$ea,-(a0)  * NOP
+    move.b  #$ea,-(a0)  * NOP
     DPRINT  "Patched out rasterline check!"
-    bra     .loop1
-
+    bra.b   .loop1
 .out
-
     rts
 
 ;CD 12 D0   L0002     CMP $D012
