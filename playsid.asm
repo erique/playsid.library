@@ -357,11 +357,17 @@ AutoInitFunction
         bne     .Exit
 .noZorroSid 
 
-	; usb driver is a no-op for any operating modes it doesn't support
-	move.w	psb_OperatingMode(a6),d0
+        ; usb driver is a no-op for any operating modes it doesn't support
+        move.w  psb_OperatingMode(a6),d0
+        cmp.w   #OM_USBSID_PICO,d0
+        beq.b   .doUsb
+        cmp.w   #OM_SIDBLASTER_USB,d0
+        bne.b   .noUsb
+.doUsb
         bsr     start_sid_usb
-	tst.l	d0
-        bne    .Exit
+        tst.b   d0
+        bne     .Exit
+.noUsb
 
         bsr	    AllocEmulMem
 		tst.l	d0
@@ -5537,7 +5543,6 @@ start_sid_usb:
 	moveq.l	#$10,d1	; latency
 	moveq.l	#$15,d2	; taskpri
 	jsr	_sid_init
-    extb.l  d0
 .fail	movem.l	(sp)+,d1-a6
 	rts
 
