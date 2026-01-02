@@ -1415,7 +1415,9 @@ void print_help(void)
 {
   printf("--------------------------------------------------------------------------------------------------------------------\n");
   printf("USBSID-Pico configtool\n");
-  printf("For the tool to work correct, this tool requires firmware v0.2.4 and up\n");
+  printf("For the tool to work correct, this tool requires firmware v0.2.4 and up");
+  #include "../git.gen.h"
+  printf(" (git: %s)\n", GIT);
   printf("\n");
   printf("Usage:\n");
   printf("$ cfg_usbsid [options]\n");
