@@ -26,6 +26,7 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
 #define _POSIX_C_SOURCE 199309L
+#define _POSIX_TIMERS 1
 #include <unistd.h>
 #include <stdlib.h>
 #include <errno.h>  // `errno`
@@ -1812,7 +1813,7 @@ void config_usbsidpico(int argc, char **argv)
         printf("Sending: 0x%02x: 0x%02x (0x%02x & 0x%02x) * 31\n", 0x80, a, b, c);
         uint8_t temp1[2] = {a, b};
         uint8_t temp2[2] = {a, c};
-        uint8_t buf[63];
+        uint8_t buf[65];
         buf[0] = (0x0 | 63);
         printf("[BUFFER] ");
         for (int i = 1; i < 63; i+=4) {
