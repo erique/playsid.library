@@ -28,6 +28,7 @@
 #define kprintf(...) do {} while(0)
 #else
 static int kprintf(const char* format, ...);
+#define kprintf(...) printf(__VA_ARGS__)
 #endif
 
 #define SysBase (*(struct ExecBase **) (4L))
@@ -465,7 +466,7 @@ static uint8_t AllocSID(struct USBSID_Pico* usb)
         while(pd = psdFindDevice(pd, 
                                 DA_VendorID, 0xcafe,
                                 DA_ProductID, 0x4011,
-                                DA_ProductName, (ULONG)"USBSID-Pico",
+                                // DA_ProductName, (ULONG)"USBSID-Pico",
                                 DA_Binding, (ULONG)NULL,
                                 TAG_END))
         {
@@ -480,7 +481,17 @@ static uint8_t AllocSID(struct USBSID_Pico* usb)
             if (product) {
                 kprintf("product=%s\n", product);
             } else {
-                kprintf("product=NULL\n"); 
+                kprintf("product=NULL; not a valid device\n");
+                psdUnlockDevice(pd);
+                continue;
+            }
+
+            const char USBSID_Pico[] = "USBSID-Pico";
+            if (!memcmp(product, USBSID_Pico, sizeof(USBSID_Pico)))
+            {
+                kprintf("product name mismatch\n");
+                psdUnlockDevice(pd);
+                continue;
             }
 
             struct PsdInterface* interface = NULL;

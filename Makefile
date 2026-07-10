@@ -62,4 +62,4 @@ test_blaster: test_blaster.c sid.c sidblast.c usbsid.c $(GIT_HEADER)
 	$(GCC) -O2 -noixemul -m68020 --omit-frame-pointer -Wl,-Map,test_blaster.map,--cref $^ -o $@
 
 cfg_usbsid: config-tool/cfg_usbsid.c config-tool/inih/ini.c config-tool/libusb.c $(GIT_HEADER)
-	$(GCC) -O2 -noixemul -m68020 --omit-frame-pointer -Wl,-Map,cfg_usbsid.map,--cref $^ -o $@ -I config-tool
+	$(GCC) -Wl,--strip-all -O2 -noixemul -m68020 --omit-frame-pointer -Wl,-Map,cfg_usbsid.map,--cref $^ -o $@ -I config-tool
