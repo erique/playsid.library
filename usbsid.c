@@ -21,6 +21,18 @@
 #define SID_RELOAD_CONFIG   (0x38)  /* Reload and apply stored config from flash */
 #define SID_MIRRORED_SID    (0x45)
 
+/* Onboard SID player (firmware built with ONBOARD_SIDPLAYER, "_sp" builds) */
+#define UPLOAD_SID_START    (0xD0)  /* Enter file receive mode, arg: filetype */
+#define UPLOAD_SID_DATA     (0xD1)  /* File data chunk, always a full 64 byte packet */
+#define UPLOAD_SID_END      (0xD2)  /* Exit file receive mode */
+#define UPLOAD_SID_SIZE     (0xD3)  /* File size, 16-bit big endian */
+#define SID_PLAYER_TUNE     (0xE0)  /* Select subtune and start playback */
+#define SID_PLAYER_START    (0xE1)  /* Start playback */
+#define SID_PLAYER_STOP     (0xE2)  /* Stop playback */
+#define SID_PLAYER_PAUSE    (0xE3)  /* Toggle pause */
+#define UPLOAD_TYPE_SID     (0x01)  /* Filetype: PSID/RSID */
+#define UPLOAD_TYPE_PRG     (0x02)  /* Filetype: PRG/P00 (psid64) */
+
 #define EP_SIZE             (0x40)                  /* endpoint size     */
 #define MAX_PACKET_SIZE     (EP_SIZE - 1)           /* max command size  */
 
@@ -63,6 +75,12 @@ struct USBSID_Pico
     uint16_t            pendingRecorded;
     uint8_t             dataRecorded[256];
 
+    const uint8_t*      uploadHeader;
+    uint16_t            uploadHeaderSize;
+    const uint8_t*      uploadData;
+    uint32_t            uploadDataSize;
+    uint8_t             uploadResult;
+
     uint8_t             latency;
     int8_t              taskpri;
 };
@@ -73,6 +91,7 @@ static void SIDTask();
 static bool writePacket(uint8_t command, const uint8_t* packet, uint16_t length);
 static void writePacketAndFlush(uint8_t command, const uint8_t* packet, uint16_t length);
 static uint8_t readResult();
+static void playerCommand(uint8_t command, uint8_t arg1, uint8_t arg2);
 static uint32_t deviceUnplugged(register struct Hook *hook __asm("a0"), register APTR object __asm("a2"), register APTR message __asm("a1"));
 typedef ULONG (*HOOKFUNC_ULONG)();  // NDK typedef HOOKFUNC with 'unsigned long'
 static const struct Hook hook = { .h_Entry = (HOOKFUNC_ULONG)deviceUnplugged };
@@ -284,6 +303,67 @@ void usbsid_set_num_sids(register uint8_t num_sids __asm("d0"))
     }
 }
 
+uint8_t usbsid_upload(register const uint8_t* header __asm("a0"), register uint16_t headerSize __asm("d0"), register const uint8_t* data __asm("a1"), register uint32_t dataSize __asm("d1"))
+{
+    if (!(usb && !usb->deviceLost && usb->mainTask))
+        return FALSE;
+
+    uint32_t total = (uint32_t)headerSize + dataSize;
+    if (!total || total > 0xffff)   // protocol carries a 16-bit file size
+        return FALSE;
+
+    // stop any running tune before uploading, like send_sid does
+    usbsid_player_stop();
+
+    usb->uploadHeader = header;
+    usb->uploadHeaderSize = headerSize;
+    usb->uploadData = data;
+    usb->uploadDataSize = dataSize;
+
+    usb->ctrlTask = FindTask(NULL);
+    SetSignal(0, SIGF_SINGLE);
+    Signal(usb->mainTask, SIGBREAKF_CTRL_E);
+    Wait(SIGF_SINGLE);
+    usb->ctrlTask = NULL;
+
+    kprintf("upload result %ld\n", (int)usb->uploadResult);
+    return usb->uploadResult;
+}
+
+void usbsid_player_tune(register uint8_t subtune __asm("d0"))
+{
+    if (!(usb && !usb->deviceLost))
+        return;
+
+    kprintf("player tune %ld\n", (int)subtune);
+    // the device starts playback by itself after loading the subtune
+    playerCommand(SID_PLAYER_TUNE, 0 /* tune id, 0 = uploaded file */, subtune);
+}
+
+void usbsid_player_stop()
+{
+    if (!(usb && !usb->deviceLost))
+        return;
+
+    kprintf("player stop\n");
+    playerCommand(SID_PLAYER_STOP, 0, 0);
+}
+
+void usbsid_player_pause()
+{
+    if (!(usb && !usb->deviceLost))
+        return;
+
+    kprintf("player pause\n");
+    playerCommand(SID_PLAYER_PAUSE, 0, 0);
+}
+
+static void playerCommand(uint8_t command, uint8_t arg1, uint8_t arg2)
+{
+    uint8_t buf[] = { command, arg1, arg2, 0 };
+    writePacketAndFlush(SID_COMMAND | SID_CONFIG, buf, sizeof(buf));
+}
+
 /*-------------------------------------------------------*/
 
 
@@ -291,6 +371,69 @@ void usbsid_set_num_sids(register uint8_t num_sids __asm("d0"))
 
 static uint8_t AllocSID(struct USBSID_Pico* usb);
 static void FreeSID(struct USBSID_Pico* usb);
+
+// Runs on the SIDTask; performs the full file upload sequence.
+// The onboard player expects every packet to be a full 64 bytes:
+// the firmware always consumes 62 data bytes per DATA packet.
+static void uploadFile(struct USBSID_Pico* usb)
+{
+    uint8_t packet[EP_SIZE];
+
+    usb->uploadResult = FALSE;
+
+    for (uint16_t i = 0; i < EP_SIZE; i++)
+        packet[i] = 0;
+    packet[0] = SID_COMMAND | SID_CONFIG;
+    packet[1] = UPLOAD_SID_START;
+    packet[2] = UPLOAD_TYPE_SID;
+    if (psdDoPipe(usb->outPipe, packet, EP_SIZE))
+        return;
+
+    // header and data are sent back to back as one file
+    const uint32_t total = (uint32_t)usb->uploadHeaderSize + usb->uploadDataSize;
+    const uint8_t* src = usb->uploadHeader;
+    uint32_t srcLeft = usb->uploadHeaderSize;
+    uint32_t sent = 0;
+
+    while (sent < total)
+    {
+        packet[0] = SID_COMMAND | SID_CONFIG;
+        packet[1] = UPLOAD_SID_DATA;
+
+        uint16_t fill = 2;
+        while (fill < EP_SIZE && sent < total)
+        {
+            if (!srcLeft)
+            {
+                src = usb->uploadData;
+                srcLeft = usb->uploadDataSize;
+            }
+            packet[fill++] = *src++;
+            srcLeft--;
+            sent++;
+        }
+        while (fill < EP_SIZE)
+            packet[fill++] = 0;
+
+        if (psdDoPipe(usb->outPipe, packet, EP_SIZE))
+            return;
+    }
+
+    for (uint16_t i = 0; i < EP_SIZE; i++)
+        packet[i] = 0;
+    packet[0] = SID_COMMAND | SID_CONFIG;
+    packet[1] = UPLOAD_SID_END;
+    if (psdDoPipe(usb->outPipe, packet, EP_SIZE))
+        return;
+
+    packet[1] = UPLOAD_SID_SIZE;
+    packet[2] = (total >> 8) & 0xff;
+    packet[3] = total & 0xff;
+    if (psdDoPipe(usb->outPipe, packet, EP_SIZE))
+        return;
+
+    usb->uploadResult = TRUE;
+}
 
 static void SIDTask()
 {
@@ -314,13 +457,25 @@ static void SIDTask()
 
         SetTaskPri(currentTask, usb->taskpri);
 
-        uint32_t sigMask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D;
+        uint32_t sigMask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D | SIGBREAKF_CTRL_E;
 
         uint32_t signals = 0;
 
         do
         {
             signals = Wait(sigMask);
+
+            if (signals & SIGBREAKF_CTRL_E)
+            {
+                uploadFile(usb);
+
+                Forbid();
+                if (usb->ctrlTask)
+                {
+                    Signal(usb->ctrlTask, SIGF_SINGLE);
+                }
+                Permit();
+            }
 
             if (signals & SIGBREAKF_CTRL_D)
             {

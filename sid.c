@@ -16,10 +16,11 @@ uint8_t sid_init(register uint8_t operating_mode __asm("d0"), register uint8_t l
 			break;
 
 		case OM_USBSID_PICO:
+		case OM_USBSID_PICO_NATIVE:
 			if (!usbsid_init(latency, taskpri))
 				return SID_NOUSBSIDPICO;
 			break;
-		
+
 	}
 	backend = operating_mode;
 	return 0; // a-ok
@@ -27,6 +28,8 @@ uint8_t sid_init(register uint8_t operating_mode __asm("d0"), register uint8_t l
 
 void sid_exit()
 {
+	if (backend == OM_USBSID_PICO_NATIVE)
+		usbsid_player_stop();
 	sidblaster_exit();
 	usbsid_exit();
 	backend = 0;
@@ -77,4 +80,29 @@ void sid_set_num_sids(register uint8_t num_sids __asm("d0"))
 {
 	if (backend == OM_USBSID_PICO)
 		return usbsid_set_num_sids(num_sids);
+}
+
+uint8_t sid_upload(register const uint8_t* header __asm("a0"), register uint16_t headerSize __asm("d0"), register const uint8_t* data __asm("a1"), register uint32_t dataSize __asm("d1"))
+{
+	if (backend == OM_USBSID_PICO_NATIVE)
+		return usbsid_upload(header, headerSize, data, dataSize);
+	return 0;
+}
+
+void sid_player_tune(register uint8_t subtune __asm("d0"))
+{
+	if (backend == OM_USBSID_PICO_NATIVE)
+		usbsid_player_tune(subtune);
+}
+
+void sid_player_stop()
+{
+	if (backend == OM_USBSID_PICO_NATIVE)
+		usbsid_player_stop();
+}
+
+void sid_player_pause()
+{
+	if (backend == OM_USBSID_PICO_NATIVE)
+		usbsid_player_pause();
 }

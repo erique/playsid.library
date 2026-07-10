@@ -128,6 +128,7 @@ SPRINT  macro
 		;xref	@AllocEmulAudio,@FreeEmulAudio,@ReadIcon
 
 		xref	_sid_init,_sid_exit,_sid_write_reg_record,_sid_write_reg_playback, _sid_reset, _sid_set_num_sids
+		xref	_sid_upload,_sid_player_tune,_sid_player_stop,_sid_player_pause
 
                 xdef    _PlaySidBase
 *=======================================================================*
@@ -361,6 +362,8 @@ AutoInitFunction
         move.w  psb_OperatingMode(a6),d0
         cmp.w   #OM_USBSID_PICO,d0
         beq.b   .doUsb
+        cmp.w   #OM_USBSID_PICO_NATIVE,d0
+        beq.b   .doUsb
         cmp.w   #OM_SIDBLASTER_USB,d0
         bne.b   .noUsb
 .doUsb
@@ -472,6 +475,8 @@ GetEnvMode:
     beq     .6
     cmp.l   #"usbp",d0
     beq     .7
+    cmp.l   #"usbn",d0
+    beq     .8
     bra     .1 * default
 .x  rts
 
@@ -508,6 +513,11 @@ GetEnvMode:
 .7
     DPRINT  "PlaySIDMode=USBSID-Pico"
     moveq   #OM_USBSID_PICO,d0
+    bsr     @SetOperatingMode
+    rts
+.8
+    DPRINT  "PlaySIDMode=USBSID-Pico native"
+    moveq   #OM_USBSID_PICO_NATIVE,d0
     bsr     @SetOperatingMode
     rts
 
@@ -937,6 +947,14 @@ isResidActive:
 
         bsr     set_num_sids
 
+        * The onboard player gets the tune uploaded right away;
+        * it must not be patched as the device emulates the rasterline
+        cmp.w   #OM_USBSID_PICO_NATIVE,psb_OperatingMode(a6)
+        bne.b   .noUpload
+        bsr     upload_sid_usb
+		;CALLEXEC Permit
+        rts
+.noUpload
         bsr     patchSong
 
 		;CALLEXEC Permit
@@ -1140,6 +1158,16 @@ getSidChipVersion:
 		bne	.Exit
 
 .MemOK		bsr	@StopSong
+
+        cmp.w   #OM_USBSID_PICO_NATIVE,psb_OperatingMode(a6)
+        bne.b   .noNative
+        * Onboard player: select the subtune, the device starts playback itself
+        move.w  psb_SongTune(a6),d0
+        bsr     play_sid_usb
+        move.w	#PM_PLAY,psb_PlayMode(a6)
+        moveq	#0,d0
+        bra	.Exit
+.noNative
 		bsr	@AllocEmulAudio
 		tst.l	d0
 		bne	.Exit
@@ -1195,6 +1223,18 @@ getSidChipVersion:
 
 		cmp.w	#PM_STOP,psb_PlayMode(a6)
 		beq.s	.Exit
+
+        cmp.w   #OM_USBSID_PICO_NATIVE,psb_OperatingMode(a6)
+        bne.b   .noNative
+        cmp.w   #PM_PAUSE,psb_PlayMode(a6)
+        bne.b   .stopNative
+        * the device stop command only takes effect while playing; unpause first
+        bsr     pause_sid_usb
+.stopNative
+        bsr     stop_sid_usb_player
+        move.w	#PM_STOP,psb_PlayMode(a6)
+        bra.s	.Exit
+.noNative
 		cmp.w	#PM_PAUSE,psb_PlayMode(a6)
 		beq.s	.Pause
 		bsr	StopTimerB
@@ -1215,6 +1255,13 @@ getSidChipVersion:
 		movem.l	d2-d7/a2-a6,-(a7)
 		cmp.w	#PM_PLAY,psb_PlayMode(a6)
 		bne.s	.Exit
+
+        cmp.w   #OM_USBSID_PICO_NATIVE,psb_OperatingMode(a6)
+        bne.b   .noNative
+        bsr     pause_sid_usb
+        move.w	#PM_PAUSE,psb_PlayMode(a6)
+        bra.s	.Exit
+.noNative
 		bsr	StopTimerB
 		bsr	StopTimerA
 		bsr	PlayDisable
@@ -1233,7 +1280,16 @@ getSidChipVersion:
 		beq.s	.PauseOK
 		moveq	#SID_NOPAUSE,D0
 		bra	.Exit
-.PauseOK	bsr	@AllocEmulAudio
+.PauseOK
+        cmp.w   #OM_USBSID_PICO_NATIVE,psb_OperatingMode(a6)
+        bne.b   .noNative
+        * the device pause command is a toggle; this resumes playback
+        bsr     pause_sid_usb
+        move.w	#PM_PLAY,psb_PlayMode(a6)
+        moveq	#0,d0
+        bra.s	.Exit
+.noNative
+		bsr	@AllocEmulAudio
 		tst.l	d0
 		bne	.Exit
 		bsr	OpenIRQ
@@ -1255,6 +1311,9 @@ getSidChipVersion:
 @ForwardSong	movem.l	d2-d7/a2-a6,-(a7)
 		cmp.w	#PM_PLAY,psb_PlayMode(a6)
 		bne.s	.Exit
+        * not supported by the onboard player
+        cmp.w   #OM_USBSID_PICO_NATIVE,psb_OperatingMode(a6)
+        beq.s	.Exit
 
 		move.w	d0,d7
 		subq.w	#1,d7
@@ -1275,6 +1334,9 @@ getSidChipVersion:
 @RewindSong	movem.l	d2-d7/a2-a6,-(a7)
 		cmp.w	#PM_PLAY,psb_PlayMode(a6)
 		bne.s	.Exit
+        * not supported by the onboard player
+        cmp.w   #OM_USBSID_PICO_NATIVE,psb_OperatingMode(a6)
+        beq.s	.Exit
 
 		move.w	d0,d7
 		subq.w	#1,d7
@@ -5565,6 +5627,53 @@ mute_sid_usb:
     movem.l (sp)+,d0-a6
 	rts
 
+
+* Upload the tune to the USBSID-Pico onboard player.
+* PSID header and C64 data are sent back to back as one file.
+* In:
+*    a0 = PSID header
+*    a6 = PlaySidBase
+upload_sid_usb:
+    DPRINT  "upload_sid_usb"
+    movem.l d0-a6,-(sp)     ; paranoia
+    moveq   #0,d0
+    move.w  sidh_length(a0),d0
+    move.l  psb_SongLocation(a6),a1
+    moveq   #0,d1
+    move.w  psb_SongLength(a6),d1
+    jsr     _sid_upload
+    tst.b   d0
+    bne.b   .ok
+    * upload failed (no device?); make StartSong report SID_NOMODULE
+    clr.w   psb_SongSetFlag(a6)
+    DPRINT  "upload failed!"
+.ok
+    movem.l (sp)+,d0-a6
+    rts
+
+* Select subtune on the onboard player, playback starts on the device
+* In:
+*    d0 = subtune number, 0-based
+play_sid_usb:
+    DPRINT  "play_sid_usb"
+    movem.l d0-a6,-(sp)     ; paranoia
+    jsr     _sid_player_tune
+    movem.l (sp)+,d0-a6
+    rts
+
+stop_sid_usb_player:
+    DPRINT  "stop_sid_usb_player"
+    movem.l d0-a6,-(sp)     ; paranoia
+    jsr     _sid_player_stop
+    movem.l (sp)+,d0-a6
+    rts
+
+pause_sid_usb:
+    DPRINT  "pause_sid_usb"
+    movem.l d0-a6,-(sp)     ; paranoia
+    jsr     _sid_player_pause
+    movem.l (sp)+,d0-a6
+    rts
 
 set_num_sids:
     movem.l d0-a6,-(sp)     ; paranoia

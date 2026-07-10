@@ -87,6 +87,9 @@ OM_RESID_AUTO     equ 3
 OM_SIDBLASTER_USB equ 4
 OM_ZORROSID       equ 5
 OM_USBSID_PICO    equ 6
+* Tune is played by the C64 emulation on the USBSID-Pico device itself.
+* Requires an rp2350 based board with an ONBOARD_SIDPLAYER ("_sp") firmware.
+OM_USBSID_PICO_NATIVE equ 7
 
 ; --- reSID Modes -----------------------------------------------------
 REM_NORMAL         equ 0
