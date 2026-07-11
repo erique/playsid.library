@@ -25,9 +25,10 @@ HippoPlayer also provides additional integration in the user interface.
 
 Configuring with environment variables
 --------------------------------------
-- Set operating mode: normal/classic mode, reSID 6581, reSID 8580, 
-  reSID auto detect, SIDBlaster USB, ZorroSID or USBSID-Pico
-  Variable: "PlaySIDMode", values: "Norm,6581,8580,Auto,Sidb,Zorr,UsbP"
+- Set operating mode: normal/classic mode, reSID 6581, reSID 8580,
+  reSID auto detect, SIDBlaster USB, ZorroSID, USBSID-Pico or
+  USBSID-Pico native (tune runs on the device itself)
+  Variable: "PlaySIDMode", values: "Norm,6581,8580,Auto,Sidb,Zorr,UsbP,UsbN"
 
 - Set reSID mode: normal, oversample 2x, 3x, 4x
   Variable: "PlaySIDreSIDMode", values: "Norm,Ovs2,Ovs3,Ovs4"
@@ -88,10 +89,42 @@ and allow playback using it, providing a truly authentic sound.
 In addition to some extra hardware and USB connectivity, 
 the Poseidon USB stack needs to be installed. 
 
-Digisamples will not be heard. The playsid.library sample handling 
+Digisamples will not be heard. The playsid.library sample handling
 is not usable with SIDBlaster/USBSID-Pico.
 
 USB driver and integration by eriQue
+
+
+USBSID-Pico native mode
+-----------------------
+
+In the normal USBSID-Pico mode the library runs the tune's 6502 player
+code on the Amiga and streams the resulting SID register writes to the
+device. In native mode ("UsbN") the whole SID file is instead uploaded
+to the device, which emulates the complete C64 (CPU, CIA timers, VIC
+timing) itself and plays the tune with cycle exact timing.
+
+Requirements:
+- An rp2350 based board (Pico2)
+- A firmware built with ONBOARD_SIDPLAYER (firmware files ending
+  in "_sp", e.g. "usbsidpico2-v1.0_sp.uf2")
+
+Benefits:
+- Cycle exact playback with real CIA/rasterline timing
+- Digisample tunes play correctly (they do not in the other
+  hardware SID modes)
+
+Current limitations (see USBSID-native-mode.md for details):
+- Forward/rewind does not work
+- No per-voice muting, no time counter, no song end detection,
+  no scope/waveform display in player UIs
+- The library cannot detect whether the connected device actually
+  runs an "_sp" firmware. With a normal firmware, playback commands
+  are silently ignored and no sound is produced.
+
+The send_sid tool (same as shipped with the USBSID-Pico firmware,
+compiled for Amiga) can be used to test the feature independently
+of the library: "send_sid tune.sid -t 1"
 
 
 ZorroSID
