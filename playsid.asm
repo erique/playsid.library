@@ -1657,13 +1657,13 @@ ReadDisplayData
 		tst.w	0(a0)
 		bne.s	.1
 		clr.w	dd_Enve1(a1)
-.1		tst.w	2(a1)
+.1		tst.w	2(a0)
 		bne.s	.2
 		clr.w	dd_Enve2(a1)
-.2		tst.w	4(a1)
+.2		tst.w	4(a0)
 		bne.s	.3
 		clr.w	dd_Enve3(a1)
-.3		tst.w	6(a1)
+.3		tst.w	6(a0)
 		bne.s	.4
 		clr.w	dd_Enve4(a1)
 .4		move.l	psb_Chan4(a6),a0
