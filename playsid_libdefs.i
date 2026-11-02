@@ -15,14 +15,14 @@ PLAYSID_LIBDEFS_I SET  1
 	include "git.gen.i"
 
 PSIDLIB_VERSION		equ	1
-PSIDLIB_REVISION	equ	9
+PSIDLIB_REVISION	equ	11
 
 PSIDLIB_NAME	MACRO
 		dc.b	"playsid.library",0
 		ENDM
 
 PSIDLIB_IDSTRING MACRO
-		dc.b	"playsid.library 1.10 (Jan 2026) reSID+SIDBlaster+ZorroSID+USBSID-Pico (git:"
+		dc.b	"playsid.library 1.11 (Nov 2026) reSID+SIDBlaster+ZorroSID+USBSID-Pico (git:"
 		GIT
 		dc.b	")",13,10,0
 		ENDM
@@ -211,6 +211,7 @@ FREE		MACRO
     UWORD   psb_Envelope7
     UWORD   psb_Envelope8
     UWORD   psb_Envelope9
+    ULONG   psb_ChannelMask         ; bit chip*4+voice set = muted, appended to keep private offsets
 	LABEL	psb_SIZEOF
 
 ; --- Error --------------------------------------------------------------
