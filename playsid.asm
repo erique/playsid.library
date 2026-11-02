@@ -211,6 +211,7 @@ AutoInitVectors	;***** Standard System Routines *****
         dc.l    @SetAHIMode
         dc.l    @GetAHIMode
         dc.l    @SetResidBoost
+        dc.l    @SetChannelMask
 		dc.l	-1
 
 AutoInitStructure
@@ -281,6 +282,7 @@ AutoInitFunction
 		move.w	d0,psb_ChannelEnable+2(a6)
 		move.w	d0,psb_ChannelEnable+4(a6)
 		move.w	d0,psb_ChannelEnable+6(a6)
+		clr.l	psb_ChannelMask(a6)
 		move.w	d0,psb_AudioDevice(a6)
         bsr     undefineSettings
 
@@ -886,6 +888,39 @@ isResidActive:
 		lea	psb_ChannelEnable(a6),a1
 		move.l	(a0)+,(a1)+
 		move.l	(a0)+,(a1)+
+		; keep bits 0-3 of psb_ChannelMask (SID 1) in step: 1 = muted
+		lea	psb_ChannelEnable(a6),a1
+		move.l	psb_ChannelMask(a6),d0
+		and.l	#~$0F,d0
+		moveq	#3,d1
+.mk		tst.w	(a1,d1.w*2)
+		bne.b	.on
+		bset	d1,d0
+.on		dbf	d1,.mk
+		move.l	d0,psb_ChannelMask(a6)
+		rts
+
+*-----------------------------------------------------------------------*
+* SetChannelMask - mute voices of all SIDs.
+* In:
+*   d0 = mute mask, bit (chip*4 + voice) set = muted
+*        chip 0-2 = SID 1-3, voice 0-2 = SID voices 1-3, voice 3 = digi
+*        (sample) channel. Bits 12-31 are ignored.
+* Applies to reSID and all hardware modes (via writeSIDRegister) and, for
+* SID 1, also to the classic mode (via psb_ChannelEnable).
+* A voice is unmuted at its next control register write (normally the
+* next note).
+@SetChannelMask
+		and.l	#$0FFF,d0
+		move.l	d0,psb_ChannelMask(a6)
+		lea	psb_ChannelEnable(a6),a1
+		moveq	#3,d1
+.cl		moveq	#1,d2
+		btst	d1,d0
+		beq.b	.cs
+		moveq	#0,d2
+.cs		move.w	d2,(a1,d1.w*2)
+		dbf	d1,.cl
 		rts
 
 *-----------------------------------------------------------------------*
@@ -1622,13 +1657,13 @@ ReadDisplayData
 		tst.w	0(a0)
 		bne.s	.1
 		clr.w	dd_Enve1(a1)
-.1		tst.w	2(a1)
+.1		tst.w	2(a0)
 		bne.s	.2
 		clr.w	dd_Enve2(a1)
-.2		tst.w	4(a1)
+.2		tst.w	4(a0)
 		bne.s	.3
 		clr.w	dd_Enve3(a1)
-.3		tst.w	6(a1)
+.3		tst.w	6(a0)
 		bne.s	.4
 		clr.w	dd_Enve4(a1)
 .4		move.l	psb_Chan4(a6),a0
@@ -1638,6 +1673,54 @@ ReadDisplayData
 .5
 		movem.l	(a7)+,a2-a5
 .Exit		rts
+
+*-----------------------------------------------------------------------*
+* Mute masking, same algorithm as libsidplayfp sidemu::writeReg
+* In:
+*    a2 = PlaySidBase
+*    d6 = data
+*    d7 = address, SID1: $00-$1F, SID2: $20-$3F, SID3: $40-$5F
+* Out:
+*    d6 = data, modified if the voice is muted
+*    all other registers preserved
+applyChannelMask:
+    movem.l d0-d2,-(sp)
+    moveq   #0,d0
+    move.b  d7,d0
+    moveq   #0,d1
+    move.b  d0,d1
+    lsr.b   #5,d1               ; chip 0-2
+    cmp.b   #3,d1
+    bhs.b   .done
+    and.b   #$1f,d0             ; register
+    lsl.b   #2,d1               ; chip*4 = first mask bit
+    move.l  psb_ChannelMask(a2),d2
+    lsr.l   d1,d2               ; low 4 bits: voice 1-3, digi
+    cmp.b   #$04,d0
+    beq.b   .v1
+    cmp.b   #$0b,d0
+    beq.b   .v2
+    cmp.b   #$12,d0
+    beq.b   .v3
+    cmp.b   #$18,d0
+    bne.b   .done
+    * volume register: digi muted, pin master volume to 15
+    btst    #3,d2
+    beq.b   .done
+    or.b    #$0f,d6
+    bra.b   .done
+.v1 btst    #0,d2
+    bra.b   .ctl
+.v2 btst    #1,d2
+    bra.b   .ctl
+.v3 btst    #2,d2
+.ctl
+    beq.b   .done
+    * muted voice control register: clear waveform and gate, keep test/ring/sync
+    and.b   #$0e,d6
+.done
+    movem.l (sp)+,d0-d2
+    rts
 
 *-----------------------------------------------------------------------*
 InitSpeed
@@ -5336,6 +5419,11 @@ writeSIDRegister:
     * Normal playsid mode
     rts
 .out
+    * Apply per-voice mute mask (psb_ChannelMask) for reSID and all hardware modes
+    tst.l   psb_ChannelMask(a2)
+    beq.b   .nomask
+    bsr     applyChannelMask
+.nomask
     cmp.w   #OM_ZORROSID,psb_OperatingMode(a2)
     beq     write_zorrosid_reg
 

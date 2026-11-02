@@ -54,6 +54,7 @@ LIBRARIES_PLAYSID_LIB_I SET	1
     LIBDEF _LVOSetAHIMode
     LIBDEF _LVOGetAHIMode
     LIBDEF _LVOSetRESIDBoost
+    LIBDEF _LVOSetChannelMask
     
 CALLPLAYSID	MACRO
 	move.l	_PlaySidBase,a6
